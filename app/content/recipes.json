@@ -1,0 +1,77 @@
+[
+  {
+    "title": "2-Ingredient Pancakes",
+    "ingredients": ["2 ripe bananas", "2 eggs"],
+    "steps": [
+      "Mash the bananas well in a bowl.",
+      "Whisk in the eggs until smooth.",
+      "Cook small spoonfuls on a lightly oiled pan, 2 min per side."
+    ]
+  },
+  {
+    "title": "Quick Guacamole",
+    "ingredients": ["2 ripe avocados", "1/2 lime, juiced", "Pinch of salt", "1 tbsp chopped onion (optional)"],
+    "steps": [
+      "Mash the avocados in a bowl.",
+      "Stir in lime juice and salt.",
+      "Add onion if using, mix, and serve."
+    ]
+  },
+  {
+    "title": "5-Minute Garlic Butter Pasta",
+    "ingredients": ["200g pasta", "2 tbsp butter", "2 cloves garlic, minced", "Parmesan, salt, pepper"],
+    "steps": [
+      "Boil pasta until al dente, reserve 1/4 cup pasta water.",
+      "Melt butter, saute garlic 1 min until fragrant.",
+      "Toss pasta with garlic butter and a splash of pasta water.",
+      "Top with parmesan, salt, and pepper."
+    ]
+  },
+  {
+    "title": "Classic Scrambled Eggs",
+    "ingredients": ["3 eggs", "1 tbsp milk", "Butter", "Salt and pepper"],
+    "steps": [
+      "Whisk eggs with milk, salt, and pepper.",
+      "Melt butter in a pan over low-medium heat.",
+      "Add eggs, stir gently and continuously until just set.",
+      "Remove from heat while still slightly soft."
+    ]
+  },
+  {
+    "title": "Honey Mustard Dressing",
+    "ingredients": ["2 tbsp honey", "2 tbsp dijon mustard", "1 tbsp olive oil", "1 tbsp vinegar"],
+    "steps": [
+      "Whisk all ingredients together until smooth.",
+      "Adjust honey/mustard ratio to taste.",
+      "Store in the fridge for up to a week."
+    ]
+  },
+  {
+    "title": "Simple Tomato Bruschetta",
+    "ingredients": ["2 tomatoes, diced", "1 clove garlic, minced", "Basil, olive oil, salt", "Toasted bread"],
+    "steps": [
+      "Mix tomatoes, garlic, basil, olive oil, and salt in a bowl.",
+      "Let sit 10 minutes for flavors to combine.",
+      "Spoon onto toasted bread and serve."
+    ]
+  },
+  {
+    "title": "One-Pan Fried Rice",
+    "ingredients": ["2 cups cooked rice (day-old)", "2 eggs", "1 cup mixed veg", "2 tbsp soy sauce"],
+    "steps": [
+      "Scramble eggs in a hot pan, set aside.",
+      "Stir-fry veg for 2-3 minutes.",
+      "Add rice, breaking up clumps, fry 3-4 minutes.",
+      "Stir in eggs and soy sauce, toss to combine."
+    ]
+  },
+  {
+    "title": "No-Bake Energy Bites",
+    "ingredients": ["1 cup oats", "1/2 cup peanut butter", "1/3 cup honey", "Chocolate chips (optional)"],
+    "steps": [
+      "Mix all ingredients in a bowl until combined.",
+      "Roll into small balls.",
+      "Chill in the fridge for at least 30 minutes."
+    ]
+  }
+]

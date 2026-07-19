@@ -1,0 +1,35 @@
+services:
+  tprint:
+    build: .
+    # Or, once you've pushed an image somewhere:
+    # image: ghcr.io/toineenzo/tprint:latest
+    restart: unless-stopped
+    environment:
+      TZ: "Europe/Amsterdam" # adjust to your timezone, used for snippet timestamps
+
+      # --- Auth ---
+      AUTH_ENABLED: "true" # set to "false" if you're gating access via Cloudflare Access instead
+      APP_PASSWORD: "changeme" # shared password for the web login, only used when AUTH_ENABLED=true
+      SESSION_SECRET: "changeme-to-a-long-random-string" # keep stable across restarts, or sessions get invalidated
+      PRINT_API_TOKEN: "changeme-bearer-token" # required by n8n/Home Assistant to call /print/* and /snippets/*
+
+      # --- Printer ---
+      PRINTER_BACKEND: "file" # "file" for the real printer, "dummy" for testing without hardware
+      PRINTER_DEVICE: "/dev/usb/lp0"
+    volumes:
+      - tprint-data:/data
+    devices:
+      # This only works if /dev/usb/lp0 already exists on the Docker host
+      # (i.e. the LXC/VM this container runs in) — see the deployment guide
+      # for how to pass the printer through to that host first.
+      - "/dev/usb/lp0:/dev/usb/lp0"
+    ports:
+      - "8000:8000"
+    labels:
+      # Example caddy-docker-proxy labels for internal/Twingate access —
+      # replace with the hostname pattern your other stacks use.
+      caddy: "print.internal.example"
+      caddy.reverse_proxy: "{{upstreams 8000}}"
+
+volumes:
+  tprint-data:

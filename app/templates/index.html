@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}tprint{% endblock %}
+{% block body %}
+<main class="page">
+  <header class="topbar">
+    <h1>tprint</h1>
+    {% if auth_enabled %}
+    <form method="post" action="/logout"><button type="submit" class="link-button">Log out</button></form>
+    {% endif %}
+  </header>
+
+  <p id="status" class="status" role="status"></p>
+
+  <section class="card">
+    <h2>Print something</h2>
+
+    <div class="tabs">
+      <button class="tab-button active" data-tab="text">Text</button>
+      <button class="tab-button" data-tab="image">Image</button>
+      <button class="tab-button" data-tab="pdf">PDF</button>
+    </div>
+
+    <form id="text-form" class="tab-panel" data-tab-panel="text">
+      <textarea name="text" rows="6" placeholder="Type or paste text to print..." required></textarea>
+      <button type="submit">Print text</button>
+    </form>
+
+    <form id="image-form" class="tab-panel hidden" data-tab-panel="image" enctype="multipart/form-data">
+      <input type="file" name="file" accept="image/*" required />
+      <button type="submit">Print image</button>
+    </form>
+
+    <form id="pdf-form" class="tab-panel hidden" data-tab-panel="pdf" enctype="multipart/form-data">
+      <input type="file" name="file" accept="application/pdf" required />
+      <button type="submit">Print PDF</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Surprise me</h2>
+    <div class="button-row">
+      <button data-surprise-kind="joke">Joke</button>
+      <button data-surprise-kind="recipe">Recipe</button>
+      <button data-surprise-kind="fortune">Fortune</button>
+      <button data-surprise-kind="">Random</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Snippets</h2>
+    <ul id="snippet-list" class="snippet-list">
+      {% for snippet in snippets %}
+      <li data-snippet-id="{{ snippet.id }}">
+        <span class="snippet-name">{{ snippet.name }}</span>
+        <span class="snippet-kind">{{ snippet.kind }}</span>
+        <span class="snippet-actions">
+          <button class="snippet-print">Print</button>
+          <button class="snippet-delete">Delete</button>
+        </span>
+      </li>
+      {% else %}
+      <li class="empty">No snippets yet.</li>
+      {% endfor %}
+    </ul>
+
+    <details>
+      <summary>Add a snippet</summary>
+      <form id="snippet-form" enctype="multipart/form-data">
+        <input type="text" name="name" placeholder="Name (e.g. Wifi receipt)" required />
+        <select name="kind" id="snippet-kind">
+          <option value="text">Text</option>
+          <option value="image">Image</option>
+        </select>
+        <textarea name="text_content" id="snippet-text" rows="4" placeholder="Snippet text..."></textarea>
+        <input type="file" name="file" id="snippet-file" accept="image/*" class="hidden" />
+        <button type="submit">Save snippet</button>
+      </form>
+    </details>
+  </section>
+
+  <script src="/static/app.js"></script>
+</main>
+{% endblock %}
