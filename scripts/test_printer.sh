@@ -21,9 +21,12 @@ if [ ! -w "$DEVICE" ]; then
   exit 1
 fi
 
-# ESC @ (initialize) + test text + 3 line feeds + GS V (partial cut)
+# ESC @ (initialize) + test text + 6 line feeds + GS V (full cut).
 # Octal escapes (\033, \035), not \xHH — dash's printf builtin (Debian's
 # /bin/sh) doesn't support \x hex escapes and will print them as literal text.
-printf '\033@tprint test print\nIf you can read this,\nthe printer transport works.\n\n\n\035V\001' > "$DEVICE"
+# 6 blank lines before cutting (matches python-escpos's own default feed) —
+# the TM-T88V's cutter sits a fixed distance past the print head, so a
+# shorter feed cuts through/right next to the text instead of clean margin.
+printf '\033@tprint test print\nIf you can read this,\nthe printer transport works.\n\n\n\n\n\n\035V\000' > "$DEVICE"
 
 echo "Test print sent to $DEVICE."
