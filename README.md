@@ -43,6 +43,13 @@ UI/API without the printer attached.
 | `PRINTER_DEVICE` | `/dev/usb/lp0` | Device node the app writes ESC/POS bytes to. |
 | `PRINTER_WIDTH_PX` | `576` | Print width in pixels (TM-T88V @ 180dpi on 80mm paper). |
 | `DATA_DIR` | `/data` | Where the SQLite DB and saved snippet images live — mount a volume here. |
+| `CADDY_HOSTNAME` | _(required)_ | Internal hostname for the caddy-docker-proxy label, matching your other stacks' pattern. |
+
+`docker-compose.yml` references `APP_PASSWORD`, `SESSION_SECRET`,
+`PRINT_API_TOKEN`, and `CADDY_HOSTNAME` as required (`${VAR:?...}`) — Docker
+Compose/Portainer will refuse to start the stack until they're set, so real
+values never need to be hardcoded into the committed file. Set them via
+Portainer's stack "Environment variables" fields, not by editing the YAML.
 
 ## Deployment
 
@@ -55,13 +62,14 @@ UI/API without the printer attached.
 2. **Pass the printer through to wherever Docker runs.** Find the LXC or VM
    that runs the Docker engine behind Portainer.
    - **LXC:** in the Proxmox GUI, select it → *Resources* → *Add* →
-     *Device Passthrough* → pick the Epson device → restart the container.
+     *Device Passthrough* → type the device path (`/dev/usb/lp0`) → *Add* →
+     restart the container.
    - **VM:** select it → *Hardware* → *Add* → *USB Device* → "Use USB
      Vendor/Device ID" → pick the Epson device → restart the VM (Linux
      inside will bind it as `/dev/usb/lp0` automatically).
 
-   Re-run `scripts/test_printer.sh` from inside that LXC/VM to confirm the
-   device is visible and writable there too.
+   Re-run `scripts/test_printer.sh` from inside that LXC/VM (`pct enter
+   <id>` for an LXC) to confirm the device is visible and writable there too.
 
 3. **Deploy via Portainer.** Add a new Stack, paste `docker-compose.yml` (or
    point Portainer at this repo), fill in the environment variables (see

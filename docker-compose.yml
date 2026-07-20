@@ -5,17 +5,18 @@ services:
     # image: ghcr.io/toineenzo/tprint:latest
     restart: unless-stopped
     environment:
-      TZ: "Europe/Amsterdam" # adjust to your timezone, used for snippet timestamps
+      TZ: "${TZ:-Europe/Amsterdam}" # adjust to your timezone, used for snippet timestamps
 
-      # --- Auth ---
-      AUTH_ENABLED: "true" # set to "false" if you're gating access via Cloudflare Access instead
-      APP_PASSWORD: "changeme" # shared password for the web login, only used when AUTH_ENABLED=true
-      SESSION_SECRET: "changeme-to-a-long-random-string" # keep stable across restarts, or sessions get invalidated
-      PRINT_API_TOKEN: "changeme-bearer-token" # required by n8n/Home Assistant to call /print/* and /snippets/*
+      # --- Auth --- fill these in via Portainer's stack environment variables,
+      # not by editing this file, so real secrets never end up committed.
+      AUTH_ENABLED: "${AUTH_ENABLED:-true}" # set to "false" if you're gating access via Cloudflare Access instead
+      APP_PASSWORD: "${APP_PASSWORD:?set APP_PASSWORD in the stack's environment variables}"
+      SESSION_SECRET: "${SESSION_SECRET:?set SESSION_SECRET in the stack's environment variables}"
+      PRINT_API_TOKEN: "${PRINT_API_TOKEN:?set PRINT_API_TOKEN in the stack's environment variables}"
 
       # --- Printer ---
-      PRINTER_BACKEND: "file" # "file" for the real printer, "dummy" for testing without hardware
-      PRINTER_DEVICE: "/dev/usb/lp0"
+      PRINTER_BACKEND: "${PRINTER_BACKEND:-file}" # "file" for the real printer, "dummy" for testing without hardware
+      PRINTER_DEVICE: "${PRINTER_DEVICE:-/dev/usb/lp0}"
     volumes:
       - tprint-data:/data
     devices:
@@ -26,9 +27,9 @@ services:
     ports:
       - "8000:8000"
     labels:
-      # Example caddy-docker-proxy labels for internal/Twingate access —
-      # replace with the hostname pattern your other stacks use.
-      caddy: "print.internal.example"
+      # caddy-docker-proxy labels for internal/Twingate access — set
+      # CADDY_HOSTNAME to match the pattern your other stacks use.
+      caddy: "${CADDY_HOSTNAME:?set CADDY_HOSTNAME in the stack's environment variables}"
       caddy.reverse_proxy: "{{upstreams 8000}}"
 
 volumes:
