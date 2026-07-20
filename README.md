@@ -1,21 +1,89 @@
 # tprint
 
-A small self-hosted web app for driving an Epson TM-T88V USB thermal printer:
-upload PDFs/images or paste text to print, save reusable snippets (e.g. a
-wifi receipt for guests), print a random joke/recipe/fortune, and expose a
-REST API for Home Assistant and n8n (e.g. an 8am calendar + weather receipt).
+A self-hosted web app + REST API for driving an ESC/POS USB thermal receipt
+printer. Upload a PDF, paste text, or drop in an image and print it from any
+device on your network (or anywhere, behind your own auth); save reusable
+snippets (a wifi password receipt for guests, a recurring note); print a
+random joke, recipe, or fortune; build and print task/checklists (one receipt
+or one per item); import an `.ics` calendar file and print an agenda (or one
+receipt per event); and hit the same REST API from Home Assistant or n8n for
+automations like a daily "today's agenda + weather" receipt.
+
+Built for a hobby home-server setup, but the app itself has no dependency on
+any particular platform beyond Docker (or a plain Python environment).
+
+## Features
+
+- **Print anything**: plain text, images, multi-page PDFs (rasterized page
+  by page).
+- **Snippets**: save and re-print recurring text or image receipts.
+- **Surprise me**: a bundled, curated (not API-dependent) list of jokes,
+  recipes, and fortunes — in English or Dutch.
+- **Task/checklists**: build a list of items with optional due dates, print
+  as one combined receipt or as separate torn-off receipts per item.
+- **Calendar import**: upload an `.ics` file, print all events as one
+  agenda or as separate receipts per event.
+- **Printer settings**: a configurable header/footer "frame" (text and/or a
+  logo image, with a `{datetime}` placeholder) applied to every receipt, plus
+  default text style (bold/double-width/alignment) — all editable from the
+  web UI instead of the printer's own paper self-test menu.
+- **Localization**: UI and surprise-me content available in English or Dutch,
+  switchable per browser (cookie-based, no account needed).
+- **REST API**: every print action is an HTTP endpoint, usable from Home
+  Assistant `rest_command`, n8n, curl, or anything else.
+- **Optional auth**: a simple shared-password login for the web UI (skip it
+  if you're gating access at the network/reverse-proxy layer instead), plus
+  an independent bearer-token option for machine callers.
+
+## Supported printers
+
+Built and tested against an **Epson TM-T88V over USB**. It should work with
+most Epson TM-series and other ESC/POS-compatible thermal receipt printers
+that present as a standard USB printer-class device — i.e. Linux's `usblp`
+kernel driver binds them (typically as `/dev/usb/lp0`). All the actual
+ESC/POS command generation goes through
+[python-escpos](https://github.com/python-escpos/python-escpos), which has
+broad Epson/ESC-POS printer support — see its
+[printer profiles](https://github.com/python-escpos/python-escpos/tree/master/src/escpos/capabilities.json)
+for a sense of coverage.
+
+Not currently wired up (the library supports it, this app doesn't expose it
+yet): printers that only work over raw USB (no `usblp` binding, needs
+`pyusb`), network/Ethernet-connected printers, or serial-connected printers.
+If you need one of these, `app/printer.py` is a small, single-file place to
+add another backend.
 
 ## How it talks to the printer
 
-The TM-T88V is USB-only in this setup. Linux's `usblp` kernel driver binds
-it automatically as `/dev/usb/lp0`; the app writes raw ESC/POS bytes to that
-device node via [python-escpos](https://github.com/python-escpos/python-escpos).
-Only one container/VM can hold the USB device at a time — see **Deployment**
-below for passing it through to wherever you run this app.
+The printer connects over USB. Linux's `usblp` kernel driver binds it
+automatically as a device node (commonly `/dev/usb/lp0`); the app writes raw
+ESC/POS bytes directly to that device node. Only one container/VM can hold a
+given USB device at a time — see **Deployment** below for passing it through
+to wherever you run this app.
 
-If you ever add Epson's optional UB-E04 Ethernet interface card to the
-printer, switch `PRINTER_BACKEND` to a network backend and give it a static
-IP — this removes the USB passthrough requirement entirely. Not needed today.
+If your printer has (or can take) an Ethernet interface, network printing
+would remove the USB-passthrough requirement entirely — not implemented yet,
+see **Supported printers** above.
+
+## Quickstart (Docker)
+
+```sh
+git clone https://github.com/toineenzo/tprint.git
+cd tprint
+cp .env.example .env   # edit: at minimum set APP_PASSWORD, SESSION_SECRET, PRINT_API_TOKEN
+docker compose up -d --build
+```
+
+This starts the app on `http://localhost:8000` (or `$HOST_PORT` if you set
+one), with the printer device from `PRINTER_DEVICE` (default
+`/dev/usb/lp0`) mapped into the container. Set `PRINTER_BACKEND=dummy` in
+`.env` first if you want to try the UI without a printer attached.
+
+For a full guided deployment onto Proxmox + Portainer specifically
+(passing the USB printer through to a container, exposing it via a reverse
+proxy, etc.), see **Deployment on Proxmox** below — the same general shape
+(pass the USB device to whatever runs Docker, deploy the compose stack, set
+env vars) applies to any Docker host.
 
 ## Local development (no printer required)
 
@@ -35,60 +103,88 @@ UI/API without the printer attached.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AUTH_ENABLED` | `true` | Gate the web UI behind a shared password. Set `false` if you're relying on Cloudflare Access (or similar) in front of the app instead. |
+| `AUTH_ENABLED` | `true` | Gate the web UI behind a shared password. Set `false` if you're relying on a reverse proxy / access policy (e.g. Cloudflare Access) in front of the app instead. |
 | `APP_PASSWORD` | _(empty)_ | The shared password, used when `AUTH_ENABLED=true`. |
 | `SESSION_SECRET` | random per-process | Signs session cookies. Set a fixed value in production or everyone gets logged out on every restart. |
 | `PRINT_API_TOKEN` | _(empty)_ | Optional bearer token required on `/print/*` and `/snippets/*` for callers without a browser session (n8n, Home Assistant). Independent of `AUTH_ENABLED`. |
-| `PRINTER_BACKEND` | `file` | `file` for real hardware, `dummy` for local development. |
+| `PRINTER_BACKEND` | `file` | `file` for real hardware, `dummy` for local development/testing without a printer attached. |
 | `PRINTER_DEVICE` | `/dev/usb/lp0` | Device node the app writes ESC/POS bytes to. |
-| `PRINTER_WIDTH_PX` | `576` | Print width in pixels (TM-T88V @ 180dpi on 80mm paper). |
-| `DATA_DIR` | `/data` | Where the SQLite DB and saved snippet images live — mount a volume here. |
+| `PRINTER_WIDTH_PX` | `576` | Print width in pixels (matches a typical 80mm-roll ESC/POS printer at 180dpi; adjust for other paper widths). |
+| `DATA_DIR` | `/data` | Where the SQLite DB, saved snippet images, and settings logo live — mount a volume here. |
+| `HOST_PORT` | `8000` | Host-side port for `docker-compose.yml`, in case 8000 is already taken on your Docker host. |
 
 `docker-compose.yml` references `APP_PASSWORD`, `SESSION_SECRET`, and
 `PRINT_API_TOKEN` as required (`${VAR:?...}`) — Docker Compose/Portainer will
 refuse to start the stack until they're set, so real values never need to be
-hardcoded into the committed file. Set them via Portainer's stack
-"Environment variables" fields (or import a local `.env` file there), not by
-editing the YAML.
+hardcoded into the committed file. Set them via a local `.env` file (Docker
+Compose picks it up automatically) or Portainer's stack "Environment
+variables" fields — not by editing the YAML.
 
-## Deployment
+## Deployment on Proxmox
 
-1. **Bring up the printer.** Plug the TM-T88V into the Proxmox mini PC.
-   From the Proxmox host shell: `lsusb` (is it listed?) and
-   `dmesg | grep -i usblp` (did the kernel bind it as `/dev/usb/lp0`?). Then
-   run `scripts/test_printer.sh` against that path to confirm a real test
-   print comes out before doing anything else.
+This is the setup this app was originally built against: Proxmox VE running
+Portainer-managed Docker in an LXC (or VM), with the printer physically
+connected to the Proxmox host via USB.
+
+1. **Bring up the printer.** Plug the printer into the host. From the
+   Proxmox host shell: `lsusb` (is it listed?) and `dmesg | grep -i usblp`
+   (did the kernel bind it as `/dev/usb/lp0`?). Then run
+   `scripts/test_printer.sh` against that path to confirm a real test print
+   comes out before doing anything else.
 
 2. **Pass the printer through to wherever Docker runs.** Find the LXC or VM
-   that runs the Docker engine behind Portainer.
+   that runs your Docker engine.
    - **LXC:** in the Proxmox GUI, select it → *Resources* → *Add* →
      *Device Passthrough* → type the device path (`/dev/usb/lp0`) → *Add* →
      restart the container.
    - **VM:** select it → *Hardware* → *Add* → *USB Device* → "Use USB
-     Vendor/Device ID" → pick the Epson device → restart the VM (Linux
-     inside will bind it as `/dev/usb/lp0` automatically).
+     Vendor/Device ID" → pick the printer → restart the VM (Linux inside
+     will bind it as `/dev/usb/lp0` automatically).
 
    Re-run `scripts/test_printer.sh` from inside that LXC/VM (`pct enter
    <id>` for an LXC) to confirm the device is visible and writable there too.
 
-3. **Deploy via Portainer.** Add a new Stack, paste `docker-compose.yml` (or
-   point Portainer at this repo), fill in the environment variables (see
-   table above), and deploy. `docker-compose.yml` already maps
-   `/dev/usb/lp0` into the container — adjust the `devices:` line here if
-   your device path differs.
+3. **Deploy via Portainer.** Add a new Stack, either pointing Portainer at
+   this repo (so future updates are a "pull and redeploy" click away) or
+   pasting `docker-compose.yml` directly, and fill in the environment
+   variables (see table above — Portainer can also import a local `.env`
+   file here). `docker-compose.yml` already maps `/dev/usb/lp0` into the
+   container — adjust the `devices:` line if your device path differs, and
+   set `HOST_PORT` if 8000 is already taken on that host (Portainer itself
+   commonly uses it).
 
 4. **Expose it.**
-   - *Internal:* add a block to your Caddyfile pointing at the Docker host's
-     IP and the app's port (adjust to match your existing blocks/style):
+   - *Internal:* point your internal reverse proxy (Caddy, nginx, etc.) at
+     the Docker host's IP and the app's port, e.g. for a manually-managed
+     Caddyfile:
      ```
-     print.toine.dev {
+     print.example.com {
          reverse_proxy 192.168.1.16:8000
      }
      ```
-     Reload Caddy after editing, and it'll be reachable over Twingate.
-   - *External:* add `print.toine.dev` as a public hostname on your existing
-     Cloudflare Tunnel, pointed at this container's port 8000. Optionally
-     add a Cloudflare Access policy here and set `AUTH_ENABLED=false`.
+   - *External:* if you use something like Cloudflare Tunnel, add a public
+     hostname pointed at this container's port. Optionally add an access
+     policy there (e.g. Cloudflare Access) and set `AUTH_ENABLED=false` to
+     skip the app's own login screen.
+
+## Printer settings (`/settings`)
+
+A configurable "frame" applied to every receipt the app prints, regardless
+of source (text, image, PDF, checklist, calendar, snippet):
+
+- **Header/footer text**, with a `{datetime}` placeholder for the current
+  date and time.
+- **Header logo** — an image printed above the header text.
+- **Default text style** — bold, double-width, and alignment defaults for
+  printed text.
+
+This is deliberately scoped to *application-level* formatting, not the
+printer's own persistent memory switches (paper width, auto-cutter behavior,
+etc.) — those still require the physical self-test menu (hold Feed while
+powering on) or the manufacturer's own configuration utility. Reprogramming
+memory switches over USB is possible in principle but uses undocumented,
+model-specific vendor commands that aren't safe to guess at without the
+exact printer in hand to verify against.
 
 ## REST API
 
@@ -100,7 +196,9 @@ All endpoints below require either a logged-in browser session or, if
 | `POST /print/text` | `{"text": "..."}` | Print plain text. |
 | `POST /print/image` | multipart `file` | Print an image. |
 | `POST /print/pdf` | multipart `file` | Rasterize and print each PDF page. |
-| `POST /print/random` | `{"kind": "joke"\|"recipe"\|"fortune"}` (omit for random) | Print a surprise. |
+| `POST /print/random` | `{"kind": "joke"\|"recipe"\|"fortune", "lang": "en"\|"nl"}` (both optional) | Print a surprise. `lang` defaults to the caller's `lang` cookie, then English. |
+| `POST /print/checklist` | `{"title": "...", "items": [{"text": "...", "due": "2026-01-01"}], "mode": "single"\|"separate"}` | Print a task/checklist. |
+| `POST /print/ics` | multipart `file` (.ics), form field `mode` (`single`\|`separate`) | Print calendar events from an ICS file. |
 | `GET /snippets` | — | List saved snippets. |
 | `POST /snippets` | multipart `name`, `kind`, `text_content` or `file` | Save a snippet. |
 | `DELETE /snippets/{id}` | — | Delete a snippet. |
@@ -113,7 +211,7 @@ Add to `configuration.yaml` (adjust host and token):
 ```yaml
 rest_command:
   tprint_text:
-    url: "https://print.toine.dev/print/text"
+    url: "https://print.example.com/print/text"
     method: POST
     headers:
       Authorization: "Bearer !secret tprint_api_token"
@@ -121,7 +219,7 @@ rest_command:
     payload: '{"text": "{{ text }}"}'
 
   tprint_random:
-    url: "https://print.toine.dev/print/random"
+    url: "https://print.example.com/print/random"
     method: POST
     headers:
       Authorization: "Bearer !secret tprint_api_token"
@@ -132,7 +230,7 @@ rest_command:
 Call `rest_command.tprint_text` with a `text` field, or `rest_command.tprint_random`,
 from any HA automation/script/dashboard button.
 
-### n8n (8am calendar + weather receipt)
+### n8n (e.g. an 8am calendar + weather receipt)
 
 n8n owns the scheduling and data-fetching — this app just prints text:
 
@@ -141,5 +239,8 @@ n8n owns the scheduling and data-fetching — this app just prints text:
 3. **HTTP Request node** — `GET https://api.open-meteo.com/v1/forecast?...`
    (no API key required).
 4. **Set/Function node** — format events + weather into a plain-text receipt.
-5. **HTTP Request node** — `POST https://print.toine.dev/print/text` with
+5. **HTTP Request node** — `POST https://print.example.com/print/text` with
    `Authorization: Bearer <PRINT_API_TOKEN>` and `{"text": "<formatted text>"}`.
+
+Alternatively, POST an `.ics` export straight to `/print/ics` if your
+scheduling source can produce one.
