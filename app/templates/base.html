@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang|default('en') }}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,5 +8,9 @@
 </head>
 <body>
   {% block body %}{% endblock %}
+  <div class="lang-switch">
+    <a href="/lang/en" class="{% if lang == 'en' %}active{% endif %}">EN</a>
+    <a href="/lang/nl" class="{% if lang == 'nl' %}active{% endif %}">NL</a>
+  </div>
 </body>
 </html>

@@ -140,3 +140,60 @@ button:hover { filter: brightness(1.05); }
 .hidden { display: none; }
 
 details summary { cursor: pointer; margin-top: 0.5rem; color: var(--muted); }
+
+.topbar-links { display: flex; align-items: center; gap: 0.75rem; }
+
+.secondary-button {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  width: auto;
+}
+
+.hint { color: var(--muted); font-size: 0.85rem; margin: 0.25rem 0 0.75rem; }
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 1rem;
+}
+.checkbox-row input { width: auto; margin: 0; }
+
+.logo-preview {
+  max-width: 8rem;
+  max-height: 4rem;
+  vertical-align: middle;
+  border-radius: 0.25rem;
+  border: 1px solid var(--border);
+}
+
+.task-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0.35rem 0;
+}
+.task-row .task-text { flex: 2; margin: 0; }
+.task-row .task-due { flex: 1; margin: 0; }
+.task-row .task-remove { flex: 0 0 auto; width: auto; padding: 0.5rem 0.7rem; margin: 0; }
+
+.lang-switch {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+.lang-switch a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.3rem;
+}
+.lang-switch a.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ strings.settings_title }}{% endblock %}
+{% block body %}
+<main class="page">
+  <header class="topbar">
+    <h1>{{ strings.settings_title }}</h1>
+    <a class="link-button" href="/">{{ strings.back_to_app }}</a>
+  </header>
+
+  <p class="hint">{{ strings.settings_intro }}</p>
+
+  <form class="card" method="post" action="/settings" enctype="multipart/form-data">
+    <label for="header_text">{{ strings.settings_header_text }}</label>
+    <textarea id="header_text" name="header_text" rows="2">{{ settings.header_text or "" }}</textarea>
+    <p class="hint">{{ strings.settings_header_hint }}</p>
+
+    <label for="footer_text">{{ strings.settings_footer_text }}</label>
+    <textarea id="footer_text" name="footer_text" rows="2">{{ settings.footer_text or "" }}</textarea>
+    <p class="hint">{{ strings.settings_footer_hint }}</p>
+
+    <label for="logo">{{ strings.settings_logo }}</label>
+    {% if settings.header_logo_path %}
+      <p class="hint">{{ strings.settings_current_logo }} <img class="logo-preview" src="/settings/logo" alt="" /></p>
+      <label class="checkbox-row"><input type="checkbox" name="remove_logo" value="1" /> {{ strings.settings_remove_logo }}</label>
+    {% endif %}
+    <input type="file" id="logo" name="logo" accept="image/*" />
+    <p class="hint">{{ strings.settings_logo_hint }}</p>
+
+    <label>{{ strings.settings_text_style }}</label>
+    <label class="checkbox-row">
+      <input type="checkbox" name="default_bold" value="1" {% if settings.default_bold %}checked{% endif %} />
+      {{ strings.settings_bold }}
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" name="default_double_width" value="1" {% if settings.default_double_width %}checked{% endif %} />
+      {{ strings.settings_double_width }}
+    </label>
+
+    <label for="default_align">{{ strings.settings_align }}</label>
+    <select id="default_align" name="default_align">
+      <option value="left" {% if settings.default_align == "left" %}selected{% endif %}>{{ strings.align_left }}</option>
+      <option value="center" {% if settings.default_align == "center" %}selected{% endif %}>{{ strings.align_center }}</option>
+      <option value="right" {% if settings.default_align == "right" %}selected{% endif %}>{{ strings.align_right }}</option>
+    </select>
+
+    <button type="submit">{{ strings.save_settings }}</button>
+  </form>
+</main>
+{% endblock %}

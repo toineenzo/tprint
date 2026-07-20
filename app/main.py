@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import config, db
-from app.routers import pages, print as print_router, snippets
+from app.routers import pages, print as print_router, settings as settings_router, snippets
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 app.include_router(pages.router)
 app.include_router(print_router.router)
 app.include_router(snippets.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/health")

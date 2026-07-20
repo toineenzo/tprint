@@ -1,0 +1,77 @@
+[
+  {
+    "title": "Pannenkoeken met 2 ingrediënten",
+    "ingredients": ["2 rijpe bananen", "2 eieren"],
+    "steps": [
+      "Prak de bananen goed fijn in een kom.",
+      "Klop de eieren erdoor tot een glad beslag.",
+      "Bak kleine lepels beslag in een licht ingevette pan, 2 min per kant."
+    ]
+  },
+  {
+    "title": "Snelle guacamole",
+    "ingredients": ["2 rijpe avocado's", "1/2 limoen, sap", "Snufje zout", "1 el gehakte ui (optioneel)"],
+    "steps": [
+      "Prak de avocado's fijn in een kom.",
+      "Roer het limoensap en zout erdoor.",
+      "Voeg de ui toe indien gewenst, meng en serveer."
+    ]
+  },
+  {
+    "title": "Knoflook-botersaus met pasta in 5 minuten",
+    "ingredients": ["200g pasta", "2 el boter", "2 tenen knoflook, fijngehakt", "Parmezaan, zout, peper"],
+    "steps": [
+      "Kook de pasta beetgaar, bewaar 1/4 kop pastawater.",
+      "Smelt de boter en bak de knoflook 1 minuut tot het geurt.",
+      "Meng de pasta met de knoflookboter en een scheutje pastawater.",
+      "Werk af met parmezaan, zout en peper."
+    ]
+  },
+  {
+    "title": "Klassiek roerei",
+    "ingredients": ["3 eieren", "1 el melk", "Boter", "Zout en peper"],
+    "steps": [
+      "Klop de eieren los met melk, zout en peper.",
+      "Smelt boter in een pan op laag-middelhoog vuur.",
+      "Voeg de eieren toe en roer rustig tot ze net gestold zijn.",
+      "Haal van het vuur terwijl het nog iets zacht is."
+    ]
+  },
+  {
+    "title": "Honing-mosterddressing",
+    "ingredients": ["2 el honing", "2 el dijonmosterd", "1 el olijfolie", "1 el azijn"],
+    "steps": [
+      "Klop alle ingrediënten glad door elkaar.",
+      "Pas de verhouding honing/mosterd aan naar smaak.",
+      "Bewaar maximaal een week in de koelkast."
+    ]
+  },
+  {
+    "title": "Simpele tomatenbruschetta",
+    "ingredients": ["2 tomaten, in blokjes", "1 teen knoflook, fijngehakt", "Basilicum, olijfolie, zout", "Geroosterd brood"],
+    "steps": [
+      "Meng tomaat, knoflook, basilicum, olijfolie en zout in een kom.",
+      "Laat 10 minuten staan zodat de smaken zich mengen.",
+      "Schep op geroosterd brood en serveer."
+    ]
+  },
+  {
+    "title": "Nasi uit één pan",
+    "ingredients": ["2 kopjes gekookte rijst (van gisteren)", "2 eieren", "1 kop gemengde groente", "2 el sojasaus"],
+    "steps": [
+      "Roerbak de eieren in een hete pan, zet apart.",
+      "Roerbak de groente 2-3 minuten.",
+      "Voeg de rijst toe, klontjes losmaken, 3-4 minuten bakken.",
+      "Roer de eieren en sojasaus erdoor."
+    ]
+  },
+  {
+    "title": "No-bake energieballetjes",
+    "ingredients": ["1 kop havermout", "1/2 kop pindakaas", "1/3 kop honing", "Chocoladeschilfers (optioneel)"],
+    "steps": [
+      "Meng alle ingrediënten in een kom tot een samenhangend geheel.",
+      "Rol er kleine balletjes van.",
+      "Laat minstens 30 minuten opstijven in de koelkast."
+    ]
+  }
+]

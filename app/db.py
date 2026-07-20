@@ -13,6 +13,16 @@ CREATE TABLE IF NOT EXISTS snippets (
     image_path TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    header_text TEXT,
+    footer_text TEXT,
+    header_logo_path TEXT,
+    default_align TEXT NOT NULL DEFAULT 'left',
+    default_bold INTEGER NOT NULL DEFAULT 0,
+    default_double_width INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -21,6 +31,7 @@ def init_db() -> None:
     os.makedirs(config.SNIPPET_IMAGE_DIR, exist_ok=True)
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)")
 
 
 @contextmanager

@@ -1,11 +1,12 @@
 import io
 import os
+from datetime import datetime
 
 import fitz  # PyMuPDF
 from escpos.printer import Dummy
 from PIL import Image
 
-from app import config
+from app import config, i18n, settings
 
 
 def _fit_to_width(image: Image.Image) -> Image.Image:
@@ -15,6 +16,10 @@ def _fit_to_width(image: Image.Image) -> Image.Image:
         new_height = max(1, int(image.height * ratio))
         image = image.resize((config.PRINTER_WIDTH_PX, new_height), Image.LANCZOS)
     return image
+
+
+def _render_template(text: str) -> str:
+    return text.replace("{datetime}", datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 
 def _build(build_fn) -> bytes:
@@ -47,23 +52,54 @@ def _send(data: bytes) -> None:
         os.close(fd)
 
 
-def print_text(text: str) -> None:
-    def build(p):
-        p.set(align="left")
-        p.text(text if text.endswith("\n") else text + "\n")
+def _print_job(content_fn) -> None:
+    """Wrap content_fn(p) — which prints only the job's own content, no cut
+    — with the configured header (logo + text) and footer, then cut, then
+    send. Every print_* function below routes through this so header/footer
+    settings apply everywhere consistently.
+    """
+    s = settings.get_settings()
+
+    def wrapped(p):
+        if s["header_logo_path"]:
+            logo_path = os.path.join(config.DATA_DIR, s["header_logo_path"])
+            if os.path.exists(logo_path):
+                p.set(align="center")
+                p.image(_fit_to_width(Image.open(logo_path)))
+        if s["header_text"]:
+            p.set(align="center", bold=False, double_width=False)
+            p.text(_render_template(s["header_text"]) + "\n")
+
+        p.set(
+            align=s["default_align"],
+            bold=bool(s["default_bold"]),
+            double_width=bool(s["default_double_width"]),
+        )
+        content_fn(p)
+
+        if s["footer_text"]:
+            p.set(align="center", bold=False, double_width=False)
+            p.text(_render_template(s["footer_text"]) + "\n")
+
         p.cut()
 
-    _send(_build(build))
+    _send(_build(wrapped))
+
+
+def print_text(text: str) -> None:
+    def content(p):
+        p.text(text if text.endswith("\n") else text + "\n")
+
+    _print_job(content)
 
 
 def print_image(image: Image.Image) -> None:
     image = _fit_to_width(image)
 
-    def build(p):
+    def content(p):
         p.image(image)
-        p.cut()
 
-    _send(_build(build))
+    _print_job(content)
 
 
 def print_pdf(pdf_bytes: bytes) -> None:
@@ -78,12 +114,84 @@ def print_pdf(pdf_bytes: bytes) -> None:
     finally:
         doc.close()
 
-    def build(p):
+    def content(p):
         for image in images:
             p.image(image)
-        p.cut()
 
-    _send(_build(build))
+    _print_job(content)
+
+
+def _checklist_lines(items: list[dict], lang: str) -> list[str]:
+    strings = i18n.t(lang)
+    lines = []
+    for item in items:
+        line = f"[ ] {item['text']}"
+        if item.get("due"):
+            line += f"  ({strings['due_label']}: {item['due']})"
+        lines.append(line)
+    return lines
+
+
+def print_checklist(title: str | None, items: list[dict], mode: str, lang: str = "en") -> None:
+    if mode == "separate":
+        for item in items:
+            def content(p, item=item):
+                if title:
+                    p.set(align="center", bold=True)
+                    p.text(title + "\n")
+                p.set(align="left", bold=False)
+                p.text(_checklist_lines([item], lang)[0] + "\n")
+
+            _print_job(content)
+        return
+
+    def content(p):
+        if title:
+            p.set(align="center", bold=True)
+            p.text(title + "\n")
+        p.set(align="left", bold=False)
+        for line in _checklist_lines(items, lang):
+            p.text(line + "\n")
+
+    _print_job(content)
+
+
+def _event_lines(event: dict) -> list[str]:
+    lines = [event["summary"] or "(no title)"]
+    if event.get("when"):
+        lines.append(event["when"])
+    if event.get("location"):
+        lines.append(event["location"])
+    if event.get("description"):
+        lines.append("")
+        lines.append(event["description"])
+    return lines
+
+
+def print_ics_events(events: list[dict], mode: str) -> None:
+    if mode == "separate":
+        for event in events:
+            def content(p, event=event):
+                p.set(align="left", bold=True)
+                p.text(_event_lines(event)[0] + "\n")
+                p.set(bold=False)
+                for line in _event_lines(event)[1:]:
+                    p.text(line + "\n")
+
+            _print_job(content)
+        return
+
+    def content(p):
+        for event in events:
+            lines = _event_lines(event)
+            p.set(align="left", bold=True)
+            p.text(lines[0] + "\n")
+            p.set(bold=False)
+            for line in lines[1:]:
+                p.text(line + "\n")
+            p.text("\n")
+
+    _print_job(content)
 
 
 def image_from_upload(data: bytes) -> Image.Image:

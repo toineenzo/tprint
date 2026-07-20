@@ -1,83 +1,119 @@
 {% extends "base.html" %}
-{% block title %}tprint{% endblock %}
+{% block title %}{{ strings.app_title }}{% endblock %}
 {% block body %}
 <main class="page">
   <header class="topbar">
-    <h1>tprint</h1>
-    {% if auth_enabled %}
-    <form method="post" action="/logout"><button type="submit" class="link-button">Log out</button></form>
-    {% endif %}
+    <h1>{{ strings.app_title }}</h1>
+    <nav class="topbar-links">
+      <a class="link-button" href="/settings">{{ strings.settings }}</a>
+      {% if auth_enabled %}
+      <form method="post" action="/logout"><button type="submit" class="link-button">{{ strings.logout }}</button></form>
+      {% endif %}
+    </nav>
   </header>
 
   <p id="status" class="status" role="status"></p>
 
   <section class="card">
-    <h2>Print something</h2>
+    <h2>{{ strings.print_something }}</h2>
 
     <div class="tabs">
-      <button class="tab-button active" data-tab="text">Text</button>
-      <button class="tab-button" data-tab="image">Image</button>
-      <button class="tab-button" data-tab="pdf">PDF</button>
+      <button class="tab-button active" data-tab="text">{{ strings.tab_text }}</button>
+      <button class="tab-button" data-tab="image">{{ strings.tab_image }}</button>
+      <button class="tab-button" data-tab="pdf">{{ strings.tab_pdf }}</button>
+      <button class="tab-button" data-tab="tasks">{{ strings.tab_tasks }}</button>
+      <button class="tab-button" data-tab="ics">{{ strings.tab_ics }}</button>
     </div>
 
     <form id="text-form" class="tab-panel" data-tab-panel="text">
-      <textarea name="text" rows="6" placeholder="Type or paste text to print..." required></textarea>
-      <button type="submit">Print text</button>
+      <textarea name="text" rows="6" placeholder="{{ strings.text_placeholder }}" required></textarea>
+      <button type="submit">{{ strings.print_text_btn }}</button>
     </form>
 
     <form id="image-form" class="tab-panel hidden" data-tab-panel="image" enctype="multipart/form-data">
       <input type="file" name="file" accept="image/*" required />
-      <button type="submit">Print image</button>
+      <button type="submit">{{ strings.print_image_btn }}</button>
     </form>
 
     <form id="pdf-form" class="tab-panel hidden" data-tab-panel="pdf" enctype="multipart/form-data">
       <input type="file" name="file" accept="application/pdf" required />
-      <button type="submit">Print PDF</button>
+      <button type="submit">{{ strings.print_pdf_btn }}</button>
+    </form>
+
+    <form id="tasks-form" class="tab-panel hidden" data-tab-panel="tasks">
+      <input type="text" id="tasks-title" placeholder="{{ strings.tasks_title_placeholder }}" />
+      <div id="task-rows"></div>
+      <button type="button" id="add-task-row" class="secondary-button">{{ strings.add_item }}</button>
+      <label>
+        <select id="tasks-mode">
+          <option value="single">{{ strings.one_receipt }}</option>
+          <option value="separate">{{ strings.separate_receipts }}</option>
+        </select>
+      </label>
+      <button type="submit">{{ strings.print_checklist_btn }}</button>
+    </form>
+
+    <form id="ics-form" class="tab-panel hidden" data-tab-panel="ics" enctype="multipart/form-data">
+      <label for="ics-file">{{ strings.ics_upload_label }}</label>
+      <input type="file" name="file" id="ics-file" accept=".ics,text/calendar" required />
+      <select name="mode">
+        <option value="single">{{ strings.ics_mode_single }}</option>
+        <option value="separate">{{ strings.ics_mode_separate }}</option>
+      </select>
+      <button type="submit">{{ strings.print_ics_btn }}</button>
     </form>
   </section>
 
   <section class="card">
-    <h2>Surprise me</h2>
+    <h2>{{ strings.surprise_me }}</h2>
     <div class="button-row">
-      <button data-surprise-kind="joke">Joke</button>
-      <button data-surprise-kind="recipe">Recipe</button>
-      <button data-surprise-kind="fortune">Fortune</button>
-      <button data-surprise-kind="">Random</button>
+      <button data-surprise-kind="joke">{{ strings.joke }}</button>
+      <button data-surprise-kind="recipe">{{ strings.recipe }}</button>
+      <button data-surprise-kind="fortune">{{ strings.fortune }}</button>
+      <button data-surprise-kind="">{{ strings.random }}</button>
     </div>
   </section>
 
   <section class="card">
-    <h2>Snippets</h2>
+    <h2>{{ strings.snippets }}</h2>
     <ul id="snippet-list" class="snippet-list">
       {% for snippet in snippets %}
       <li data-snippet-id="{{ snippet.id }}">
         <span class="snippet-name">{{ snippet.name }}</span>
         <span class="snippet-kind">{{ snippet.kind }}</span>
         <span class="snippet-actions">
-          <button class="snippet-print">Print</button>
-          <button class="snippet-delete">Delete</button>
+          <button class="snippet-print">{{ strings.print }}</button>
+          <button class="snippet-delete">{{ strings.delete }}</button>
         </span>
       </li>
       {% else %}
-      <li class="empty">No snippets yet.</li>
+      <li class="empty">{{ strings.no_snippets }}</li>
       {% endfor %}
     </ul>
 
     <details>
-      <summary>Add a snippet</summary>
+      <summary>{{ strings.add_snippet }}</summary>
       <form id="snippet-form" enctype="multipart/form-data">
-        <input type="text" name="name" placeholder="Name (e.g. Wifi receipt)" required />
+        <input type="text" name="name" placeholder="{{ strings.snippet_name_placeholder }}" required />
         <select name="kind" id="snippet-kind">
-          <option value="text">Text</option>
-          <option value="image">Image</option>
+          <option value="text">{{ strings.tab_text }}</option>
+          <option value="image">{{ strings.tab_image }}</option>
         </select>
-        <textarea name="text_content" id="snippet-text" rows="4" placeholder="Snippet text..."></textarea>
+        <textarea name="text_content" id="snippet-text" rows="4" placeholder="{{ strings.snippet_text_placeholder }}"></textarea>
         <input type="file" name="file" id="snippet-file" accept="image/*" class="hidden" />
-        <button type="submit">Save snippet</button>
+        <button type="submit">{{ strings.save_snippet }}</button>
       </form>
     </details>
   </section>
 
+  <script>window.I18N = {{ strings_json|safe }};</script>
+  <script id="task-row-template" type="text/template">
+    <div class="task-row">
+      <input type="text" class="task-text" placeholder="{{ strings.task_placeholder }}" required />
+      <input type="date" class="task-due" title="{{ strings.due_date }}" />
+      <button type="button" class="task-remove secondary-button">{{ strings.remove_item }}</button>
+    </div>
+  </script>
   <script src="/static/app.js"></script>
 </main>
 {% endblock %}
