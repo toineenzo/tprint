@@ -1,21 +1,11 @@
 import io
+import os
 
 import fitz  # PyMuPDF
-from escpos.printer import Dummy, File
+from escpos.printer import Dummy
 from PIL import Image
 
 from app import config
-
-
-def _get_printer():
-    if config.PRINTER_BACKEND == "dummy":
-        return Dummy()
-    return File(devfile=config.PRINTER_DEVICE, auto_flush=True)
-
-
-def _finish(printer) -> None:
-    if isinstance(printer, File):
-        printer.close()
 
 
 def _fit_to_width(image: Image.Image) -> Image.Image:
@@ -27,44 +17,73 @@ def _fit_to_width(image: Image.Image) -> Image.Image:
     return image
 
 
-def print_text(text: str) -> None:
-    printer = _get_printer()
+def _build(build_fn) -> bytes:
+    """Build a job's raw ESC/POS bytes via python-escpos's Dummy backend,
+    so we control exactly how it's written to the device ourselves (see
+    _send) instead of relying on python-escpos's own file writer.
+    """
+    dummy = Dummy()
+    build_fn(dummy)
+    return dummy.output
+
+
+def _send(data: bytes) -> None:
+    if config.PRINTER_BACKEND == "dummy":
+        return
+
+    # A single unbuffered write, not python-escpos's own File backend (which
+    # opens the device with Python's default ~8KB buffered I/O). On real
+    # hardware, a large image payload split across multiple buffered writes
+    # produced a visible thin white band at every ~8KB chunk boundary — the
+    # printhead is timing-sensitive and any gap between writes shows up as a
+    # blank line. One raw write() avoids introducing those gaps ourselves.
+    fd = os.open(config.PRINTER_DEVICE, os.O_WRONLY)
     try:
-        printer.set(align="left")
-        printer.text(text if text.endswith("\n") else text + "\n")
-        printer.text("\n\n")
-        printer.cut()
+        view = memoryview(data)
+        while view:
+            n = os.write(fd, view)
+            view = view[n:]
     finally:
-        _finish(printer)
+        os.close(fd)
+
+
+def print_text(text: str) -> None:
+    def build(p):
+        p.set(align="left")
+        p.text(text if text.endswith("\n") else text + "\n")
+        p.cut()
+
+    _send(_build(build))
 
 
 def print_image(image: Image.Image) -> None:
     image = _fit_to_width(image)
-    printer = _get_printer()
-    try:
-        printer.image(image)
-        printer.text("\n\n")
-        printer.cut()
-    finally:
-        _finish(printer)
+
+    def build(p):
+        p.image(image)
+        p.cut()
+
+    _send(_build(build))
 
 
 def print_pdf(pdf_bytes: bytes) -> None:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
-        printer = _get_printer()
-        try:
-            for page in doc:
-                pix = page.get_pixmap(dpi=180)
-                mode = "RGBA" if pix.alpha else "RGB"
-                image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
-                printer.image(_fit_to_width(image))
-            printer.text("\n\n")
-            printer.cut()
-        finally:
-            _finish(printer)
+        images = []
+        for page in doc:
+            pix = page.get_pixmap(dpi=180)
+            mode = "RGBA" if pix.alpha else "RGB"
+            image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+            images.append(_fit_to_width(image))
     finally:
         doc.close()
+
+    def build(p):
+        for image in images:
+            p.image(image)
+        p.cut()
+
+    _send(_build(build))
 
 
 def image_from_upload(data: bytes) -> Image.Image:
