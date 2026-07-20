@@ -12,10 +12,11 @@
 <body>
   {% block body %}{% endblock %}
   <footer class="app-footer">
-    <div class="lang-switch">
-      <a href="/lang/en" class="{% if lang == 'en' %}active{% endif %}">EN</a>
-      <a href="/lang/nl" class="{% if lang == 'nl' %}active{% endif %}">NL</a>
-    </div>
+    <select class="lang-switch" onchange="location.href='/lang/' + this.value" aria-label="Language">
+      {% for code in all_languages %}
+      <option value="{{ code }}" {% if lang == code %}selected{% endif %}>{{ native_names[code] }}</option>
+      {% endfor %}
+    </select>
     {% if build_date %}<span class="build-date">tprint · {{ build_date }}</span>{% endif %}
   </footer>
 </body>

@@ -1,0 +1,77 @@
+[
+  {
+    "title": "Pancake con 2 ingredienti",
+    "ingredients": ["2 banane mature", "2 uova"],
+    "steps": [
+      "Schiaccia bene le banane in una ciotola.",
+      "Aggiungi le uova mescolando fino a ottenere un composto liscio.",
+      "Cuoci piccole cucchiaiate in una padella leggermente unta, 2 min per lato."
+    ]
+  },
+  {
+    "title": "Guacamole veloce",
+    "ingredients": ["2 avocado maturi", "Il succo di 1/2 lime", "Un pizzico di sale", "1 cucchiaio di cipolla tritata (facoltativo)"],
+    "steps": [
+      "Schiaccia gli avocado in una ciotola.",
+      "Aggiungi il succo di lime e il sale.",
+      "Aggiungi la cipolla se gradita, mescola e servi."
+    ]
+  },
+  {
+    "title": "Pasta al burro e aglio in 5 minuti",
+    "ingredients": ["200 g di pasta", "2 cucchiai di burro", "2 spicchi d'aglio tritati", "Parmigiano, sale, pepe"],
+    "steps": [
+      "Cuoci la pasta al dente, conserva 1/4 di tazza dell'acqua di cottura.",
+      "Sciogli il burro e soffriggi l'aglio per 1 minuto finché profuma.",
+      "Mescola la pasta con il burro all'aglio e un po' d'acqua di cottura.",
+      "Completa con parmigiano, sale e pepe."
+    ]
+  },
+  {
+    "title": "Uova strapazzate classiche",
+    "ingredients": ["3 uova", "1 cucchiaio di latte", "Burro", "Sale e pepe"],
+    "steps": [
+      "Sbatti le uova con latte, sale e pepe.",
+      "Sciogli il burro in una padella a fuoco medio-basso.",
+      "Aggiungi le uova, mescola delicatamente finché sono appena rapprese.",
+      "Togli dal fuoco quando sono ancora un po' morbide."
+    ]
+  },
+  {
+    "title": "Salsa senape e miele",
+    "ingredients": ["2 cucchiai di miele", "2 cucchiai di senape di Digione", "1 cucchiaio di olio d'oliva", "1 cucchiaio di aceto"],
+    "steps": [
+      "Sbatti tutti gli ingredienti insieme fino a ottenere un composto liscio.",
+      "Regola il rapporto miele/senape a piacere.",
+      "Conserva in frigorifero fino a una settimana."
+    ]
+  },
+  {
+    "title": "Semplice bruschetta al pomodoro",
+    "ingredients": ["2 pomodori a cubetti", "1 spicchio d'aglio tritato", "Basilico, olio d'oliva, sale", "Pane tostato"],
+    "steps": [
+      "Mescola pomodoro, aglio, basilico, olio d'oliva e sale in una ciotola.",
+      "Lascia riposare 10 minuti per far amalgamare i sapori.",
+      "Versa sul pane tostato e servi."
+    ]
+  },
+  {
+    "title": "Riso saltato in un'unica padella",
+    "ingredients": ["2 tazze di riso cotto (del giorno prima)", "2 uova", "1 tazza di verdure miste", "2 cucchiai di salsa di soia"],
+    "steps": [
+      "Strapazza le uova in una padella calda, metti da parte.",
+      "Salta le verdure per 2-3 minuti.",
+      "Aggiungi il riso, sgranandolo, salta per 3-4 minuti.",
+      "Incorpora le uova e la salsa di soia."
+    ]
+  },
+  {
+    "title": "Palline energetiche senza cottura",
+    "ingredients": ["1 tazza di fiocchi d'avena", "1/2 tazza di burro d'arachidi", "1/3 tazza di miele", "Gocce di cioccolato (facoltativo)"],
+    "steps": [
+      "Mescola tutti gli ingredienti in una ciotola finché si amalgamano.",
+      "Forma delle palline piccole.",
+      "Raffredda in frigorifero per almeno 30 minuti."
+    ]
+  }
+]

@@ -1,0 +1,77 @@
+[
+  {
+    "title": "Pfannkuchen mit 2 Zutaten",
+    "ingredients": ["2 reife Bananen", "2 Eier"],
+    "steps": [
+      "Bananen in einer Schüssel gut zerdrücken.",
+      "Eier unterrühren, bis der Teig glatt ist.",
+      "Kleine Löffel Teig in einer leicht gefetteten Pfanne von jeder Seite 2 Min. backen."
+    ]
+  },
+  {
+    "title": "Schneller Guacamole",
+    "ingredients": ["2 reife Avocados", "Saft von 1/2 Limette", "Prise Salz", "1 EL gehackte Zwiebel (optional)"],
+    "steps": [
+      "Avocados in einer Schüssel zerdrücken.",
+      "Limettensaft und Salz unterrühren.",
+      "Zwiebel nach Belieben hinzufügen, vermengen und servieren."
+    ]
+  },
+  {
+    "title": "Knoblauchbutter-Pasta in 5 Minuten",
+    "ingredients": ["200 g Pasta", "2 EL Butter", "2 Knoblauchzehen, gehackt", "Parmesan, Salz, Pfeffer"],
+    "steps": [
+      "Pasta bissfest kochen, 1/4 Tasse Nudelwasser aufheben.",
+      "Butter schmelzen, Knoblauch 1 Min. andünsten bis er duftet.",
+      "Pasta mit Knoblauchbutter und etwas Nudelwasser vermengen.",
+      "Mit Parmesan, Salz und Pfeffer abschmecken."
+    ]
+  },
+  {
+    "title": "Klassisches Rührei",
+    "ingredients": ["3 Eier", "1 EL Milch", "Butter", "Salz und Pfeffer"],
+    "steps": [
+      "Eier mit Milch, Salz und Pfeffer verquirlen.",
+      "Butter in einer Pfanne bei mittlerer Hitze schmelzen.",
+      "Eier zugeben, sanft und stetig rühren, bis sie gerade gestockt sind.",
+      "Vom Herd nehmen, solange noch leicht weich."
+    ]
+  },
+  {
+    "title": "Honig-Senf-Dressing",
+    "ingredients": ["2 EL Honig", "2 EL Dijon-Senf", "1 EL Olivenöl", "1 EL Essig"],
+    "steps": [
+      "Alle Zutaten glatt verrühren.",
+      "Verhältnis von Honig zu Senf nach Geschmack anpassen.",
+      "Bis zu einer Woche im Kühlschrank aufbewahren."
+    ]
+  },
+  {
+    "title": "Einfache Tomaten-Bruschetta",
+    "ingredients": ["2 Tomaten, gewürfelt", "1 Knoblauchzehe, gehackt", "Basilikum, Olivenöl, Salz", "Geröstetes Brot"],
+    "steps": [
+      "Tomaten, Knoblauch, Basilikum, Olivenöl und Salz in einer Schüssel mischen.",
+      "10 Minuten ziehen lassen, damit sich die Aromen verbinden.",
+      "Auf geröstetes Brot geben und servieren."
+    ]
+  },
+  {
+    "title": "Gebratener Reis aus einer Pfanne",
+    "ingredients": ["2 Tassen gekochter Reis (vom Vortag)", "2 Eier", "1 Tasse gemischtes Gemüse", "2 EL Sojasauce"],
+    "steps": [
+      "Eier in einer heißen Pfanne verrühren, beiseitestellen.",
+      "Gemüse 2-3 Minuten anbraten.",
+      "Reis zugeben, Klumpen auflösen, 3-4 Minuten braten.",
+      "Eier und Sojasauce unterrühren."
+    ]
+  },
+  {
+    "title": "Energiebällchen ohne Backen",
+    "ingredients": ["1 Tasse Haferflocken", "1/2 Tasse Erdnussbutter", "1/3 Tasse Honig", "Schokostückchen (optional)"],
+    "steps": [
+      "Alle Zutaten in einer Schüssel vermengen, bis alles zusammenhält.",
+      "Zu kleinen Kugeln formen.",
+      "Mindestens 30 Minuten im Kühlschrank fest werden lassen."
+    ]
+  }
+]
