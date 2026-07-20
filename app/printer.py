@@ -1,5 +1,7 @@
 import io
 import os
+import threading
+from contextlib import contextmanager
 from datetime import datetime
 
 import fitz  # PyMuPDF
@@ -7,6 +9,43 @@ from escpos.printer import Dummy
 from PIL import Image
 
 from app import config, i18n, settings
+
+
+class PrintCancelled(Exception):
+    """Raised when a print job is aborted mid-transfer via cancel_current()."""
+
+
+# Only one physical printer, so only one job is ever actually in flight —
+# this lock serializes writes to the device, and the event lets a big print
+# be aborted between write chunks (see _send). _current holds a small
+# descriptor of whatever's printing right now, for the "what's printing"
+# status endpoint.
+_print_lock = threading.Lock()
+_cancel_event = threading.Event()
+_current: dict | None = None
+
+
+@contextmanager
+def _job(label: str):
+    global _current
+    with _print_lock:
+        _cancel_event.clear()
+        _current = {"label": label}
+        try:
+            yield
+        finally:
+            _current = None
+
+
+def get_current() -> dict | None:
+    return dict(_current) if _current else None
+
+
+def cancel_current() -> bool:
+    if _current is None:
+        return False
+    _cancel_event.set()
+    return True
 
 
 def _fit_to_width(image: Image.Image) -> Image.Image:
@@ -42,17 +81,25 @@ def _send(data: bytes) -> None:
     # produced a visible thin white band at every ~8KB chunk boundary — the
     # printhead is timing-sensitive and any gap between writes shows up as a
     # blank line. One raw write() avoids introducing those gaps ourselves.
+    #
+    # Writing in modest chunks (rather than the whole payload in one
+    # os.write call) also gives cancel_current() somewhere to take effect —
+    # a big job can be aborted between chunks instead of only before/after.
+    chunk_size = 32 * 1024
     fd = os.open(config.PRINTER_DEVICE, os.O_WRONLY)
     try:
-        view = memoryview(data)
-        while view:
-            n = os.write(fd, view)
-            view = view[n:]
+        for offset in range(0, len(data), chunk_size):
+            if _cancel_event.is_set():
+                raise PrintCancelled()
+            chunk = memoryview(data)[offset : offset + chunk_size]
+            while chunk:
+                n = os.write(fd, chunk)
+                chunk = chunk[n:]
     finally:
         os.close(fd)
 
 
-def _print_job(content_fn) -> None:
+def _print_job(content_fn, *, label: str = "") -> None:
     """Wrap content_fn(p) — which prints only the job's own content, no cut
     — with the configured header (logo + text) and footer, then cut, then
     send. Every print_* function below routes through this so header/footer
@@ -83,14 +130,15 @@ def _print_job(content_fn) -> None:
 
         p.cut()
 
-    _send(_build(wrapped))
+    with _job(label):
+        _send(_build(wrapped))
 
 
 def print_text(text: str) -> None:
     def content(p):
         p.text(text if text.endswith("\n") else text + "\n")
 
-    _print_job(content)
+    _print_job(content, label=text[:60])
 
 
 def print_image(image: Image.Image) -> None:
@@ -99,10 +147,20 @@ def print_image(image: Image.Image) -> None:
     def content(p):
         p.image(image)
 
-    _print_job(content)
+    _print_job(content, label="image")
 
 
-def print_pdf(pdf_bytes: bytes) -> None:
+def print_images(images: list[Image.Image]) -> None:
+    fitted = [_fit_to_width(image) for image in images]
+
+    def content(p):
+        for image in fitted:
+            p.image(image)
+
+    _print_job(content, label=f"{len(images)} image(s)")
+
+
+def _render_pdf_pages(pdf_bytes: bytes) -> list[Image.Image]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
         images = []
@@ -111,14 +169,22 @@ def print_pdf(pdf_bytes: bytes) -> None:
             mode = "RGBA" if pix.alpha else "RGB"
             image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
             images.append(_fit_to_width(image))
+        return images
     finally:
         doc.close()
+
+
+def print_pdf(pdf_bytes: bytes) -> list[Image.Image]:
+    """Prints the PDF and returns the rendered page images (used for a
+    preview thumbnail by callers, so the PDF isn't rendered twice)."""
+    images = _render_pdf_pages(pdf_bytes)
 
     def content(p):
         for image in images:
             p.image(image)
 
-    _print_job(content)
+    _print_job(content, label="PDF")
+    return images
 
 
 def _checklist_lines(items: list[dict], lang: str) -> list[str]:
@@ -142,7 +208,7 @@ def print_checklist(title: str | None, items: list[dict], mode: str, lang: str =
                 p.set(align="left", bold=False)
                 p.text(_checklist_lines([item], lang)[0] + "\n")
 
-            _print_job(content)
+            _print_job(content, label=item["text"][:60])
         return
 
     def content(p):
@@ -153,7 +219,7 @@ def print_checklist(title: str | None, items: list[dict], mode: str, lang: str =
         for line in _checklist_lines(items, lang):
             p.text(line + "\n")
 
-    _print_job(content)
+    _print_job(content, label=title or f"{len(items)} tasks")
 
 
 def _event_lines(event: dict) -> list[str]:
@@ -178,7 +244,7 @@ def print_ics_events(events: list[dict], mode: str) -> None:
                 for line in _event_lines(event)[1:]:
                     p.text(line + "\n")
 
-            _print_job(content)
+            _print_job(content, label=event["summary"][:60])
         return
 
     def content(p):
@@ -191,7 +257,7 @@ def print_ics_events(events: list[dict], mode: str) -> None:
                 p.text(line + "\n")
             p.text("\n")
 
-    _print_job(content)
+    _print_job(content, label=f"{len(events)} events")
 
 
 def image_from_upload(data: bytes) -> Image.Image:

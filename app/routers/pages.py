@@ -3,7 +3,7 @@ import json
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
-from app import auth, config, i18n
+from app import auth, config, history, i18n
 from app import snippets as snippets_store
 from app.templating import templates
 
@@ -59,6 +59,7 @@ def index(request: Request):
         "index.html",
         {
             "snippets": snippets_store.list_snippets(),
+            "history": history.list_recent(20),
             "auth_enabled": config.AUTH_ENABLED,
             "strings": strings,
             "strings_json": json.dumps(strings),

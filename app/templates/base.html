@@ -1,16 +1,22 @@
 <!doctype html>
-<html lang="{{ lang|default('en') }}">
+<html lang="{{ lang|default('nl') }}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}tprint{% endblock %}</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   {% block body %}{% endblock %}
-  <div class="lang-switch">
-    <a href="/lang/en" class="{% if lang == 'en' %}active{% endif %}">EN</a>
-    <a href="/lang/nl" class="{% if lang == 'nl' %}active{% endif %}">NL</a>
-  </div>
+  <footer class="app-footer">
+    <div class="lang-switch">
+      <a href="/lang/en" class="{% if lang == 'en' %}active{% endif %}">EN</a>
+      <a href="/lang/nl" class="{% if lang == 'nl' %}active{% endif %}">NL</a>
+    </div>
+    {% if build_date %}<span class="build-date">tprint · {{ build_date }}</span>{% endif %}
+  </footer>
 </body>
 </html>

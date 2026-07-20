@@ -16,19 +16,33 @@ any particular platform beyond Docker (or a plain Python environment).
 
 - **Print anything**: plain text, images, multi-page PDFs (rasterized page
   by page).
-- **Snippets**: save and re-print recurring text or image receipts.
+- **Snippets**: save and re-print recurring content — text, one-or-more
+  images (printed in sequence on one receipt), or a PDF. Preview any
+  snippet before printing, and edit it later (rename, change the text,
+  add/remove images, or replace the PDF) without recreating it.
+- **Quick save-and-print**: a small ✓ button next to the text/image/PDF
+  print forms prints your current input and saves it as a snippet in one
+  step, for things you'll want to print again.
 - **Surprise me**: a bundled, curated (not API-dependent) list of jokes,
   recipes, and fortunes — in English or Dutch.
 - **Task/checklists**: build a list of items with optional due dates, print
   as one combined receipt or as separate torn-off receipts per item.
 - **Calendar import**: upload an `.ics` file, print all events as one
   agenda or as separate receipts per event.
+- **Print queue & scheduling**: queue a print instead of firing it
+  immediately, run the queue manually whenever you like, schedule it for a
+  specific date/time, or make it recurring (daily/weekly/monthly at a set
+  time). A big print already in progress can be canceled mid-transfer.
+- **Print history**: a sidebar showing what's been printed recently, with a
+  timestamp and a text/image preview of each job — including ones fired by
+  the queue/schedule while you weren't looking.
 - **Printer settings**: a configurable header/footer "frame" (text and/or a
   logo image, with a `{datetime}` placeholder) applied to every receipt, plus
   default text style (bold/double-width/alignment) — all editable from the
   web UI instead of the printer's own paper self-test menu.
-- **Localization**: UI and surprise-me content available in English or Dutch,
-  switchable per browser (cookie-based, no account needed).
+- **Localization**: UI and surprise-me content available in English or Dutch
+  (Dutch by default), switchable per browser (cookie-based, no account
+  needed).
 - **REST API**: every print action is an HTTP endpoint, usable from Home
   Assistant `rest_command`, n8n, curl, or anything else.
 - **Optional auth**: a simple shared-password login for the web UI (skip it
@@ -200,9 +214,23 @@ All endpoints below require either a logged-in browser session or, if
 | `POST /print/checklist` | `{"title": "...", "items": [{"text": "...", "due": "2026-01-01"}], "mode": "single"\|"separate"}` | Print a task/checklist. |
 | `POST /print/ics` | multipart `file` (.ics), form field `mode` (`single`\|`separate`) | Print calendar events from an ICS file. |
 | `GET /snippets` | — | List saved snippets. |
-| `POST /snippets` | multipart `name`, `kind`, `text_content` or `file` | Save a snippet. |
+| `GET /snippets/{id}` | — | Get a single snippet (name, kind, text, file list). |
+| `POST /snippets` | multipart `name`, `kind` (`text`\|`image`\|`pdf`), `text_content` or one-or-more `files` | Save a snippet. |
+| `PUT /snippets/{id}` | multipart `name`, `text_content`, `add_files`, `remove_files` | Edit a snippet (fields used depend on its kind). |
 | `DELETE /snippets/{id}` | — | Delete a snippet. |
 | `POST /snippets/{id}/print` | — | Print a saved snippet. |
+| `GET /history` | — | Recent print history (kind, preview text, has-image flag, timestamp). |
+| `GET /history/{id}/image` | — | Thumbnail image for a history entry. |
+| `GET /queue` | — | List queued/scheduled/recurring jobs and their status. |
+| `POST /queue/run` | — | Run every job that's queued with no scheduled time. |
+| `DELETE /queue/{id}` | — | Cancel a job that hasn't started yet. |
+| `GET /queue/current` | — | What's printing right now, if anything. |
+| `POST /queue/cancel-current` | — | Abort whatever's currently printing (works mid-transfer on a big job). |
+
+`/print/*` and `/snippets/{id}/print` also accept `queue` (bool), `run_at`
+(ISO datetime), `recurrence` (`daily`\|`weekly`\|`monthly`), and
+`recurrence_time` (`HH:MM`) — set any of these instead of printing
+immediately to queue/schedule/repeat the job.
 
 ### Home Assistant
 

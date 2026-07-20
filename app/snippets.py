@@ -1,22 +1,49 @@
+import json
 import os
 import uuid
 
 from app import config, db
 
+ALLOWED_IMAGE_EXTS = ("png", "jpg", "jpeg", "gif", "bmp", "webp")
+ALLOWED_PDF_EXTS = ("pdf",)
+
+
+def _parse_row(row) -> dict:
+    data = dict(row)
+    data["files"] = json.loads(data["file_paths"]) if data["file_paths"] else []
+    return data
+
 
 def list_snippets() -> list[dict]:
     with db.get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, name, kind, text_content, image_path, created_at "
-            "FROM snippets ORDER BY created_at DESC"
-        ).fetchall()
-        return [dict(row) for row in rows]
+        rows = conn.execute("SELECT * FROM snippets ORDER BY created_at DESC").fetchall()
+        return [_parse_row(row) for row in rows]
 
 
 def get_snippet(snippet_id: int) -> dict | None:
     with db.get_conn() as conn:
         row = conn.execute("SELECT * FROM snippets WHERE id = ?", (snippet_id,)).fetchone()
-        return dict(row) if row else None
+        return _parse_row(row) if row else None
+
+
+def file_path(filename: str) -> str:
+    return os.path.join(config.SNIPPET_FILES_DIR, filename)
+
+
+def _save_file(data: bytes, filename: str, allowed_exts: tuple[str, ...]) -> str:
+    ext = (filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in allowed_exts:
+        ext = allowed_exts[0]
+    saved_name = f"{uuid.uuid4().hex}.{ext}"
+    with open(file_path(saved_name), "wb") as f:
+        f.write(data)
+    return saved_name
+
+
+def _delete_file(filename: str) -> None:
+    path = file_path(filename)
+    if os.path.exists(path):
+        os.remove(path)
 
 
 def create_text_snippet(name: str, text_content: str) -> int:
@@ -28,24 +55,68 @@ def create_text_snippet(name: str, text_content: str) -> int:
         return cur.lastrowid
 
 
-def create_image_snippet(name: str, image_bytes: bytes, ext: str) -> int:
-    ext = ext.lower() if ext.lower() in ("png", "jpg", "jpeg", "gif", "bmp", "webp") else "png"
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    with open(os.path.join(config.SNIPPET_IMAGE_DIR, filename), "wb") as f:
-        f.write(image_bytes)
+def create_image_snippet(name: str, files: list[tuple[bytes, str]]) -> int:
+    saved = [_save_file(data, filename, ALLOWED_IMAGE_EXTS) for data, filename in files]
     with db.get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO snippets (name, kind, image_path) VALUES (?, 'image', ?)",
-            (name, filename),
+            "INSERT INTO snippets (name, kind, file_paths) VALUES (?, 'image', ?)",
+            (name, json.dumps(saved)),
         )
         return cur.lastrowid
 
 
+def create_pdf_snippet(name: str, data: bytes, filename: str) -> int:
+    saved = _save_file(data, filename, ALLOWED_PDF_EXTS)
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO snippets (name, kind, file_paths) VALUES (?, 'pdf', ?)",
+            (name, json.dumps([saved])),
+        )
+        return cur.lastrowid
+
+
+def update_snippet(
+    snippet_id: int,
+    name: str,
+    text_content: str | None = None,
+    add_image_files: list[tuple[bytes, str]] | None = None,
+    remove_filenames: list[str] | None = None,
+    replace_pdf: tuple[bytes, str] | None = None,
+) -> None:
+    snippet = get_snippet(snippet_id)
+    if not snippet:
+        raise ValueError("snippet not found")
+
+    files = list(snippet["files"])
+
+    for fn in remove_filenames or []:
+        if fn in files:
+            files.remove(fn)
+            _delete_file(fn)
+
+    for data, filename in add_image_files or []:
+        files.append(_save_file(data, filename, ALLOWED_IMAGE_EXTS))
+
+    if replace_pdf:
+        for fn in files:
+            _delete_file(fn)
+        files = [_save_file(replace_pdf[0], replace_pdf[1], ALLOWED_PDF_EXTS)]
+
+    with db.get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE snippets
+            SET name = ?, text_content = ?, file_paths = ?, updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (name, text_content, json.dumps(files) if files else None, snippet_id),
+        )
+
+
 def delete_snippet(snippet_id: int) -> None:
     snippet = get_snippet(snippet_id)
-    if snippet and snippet["kind"] == "image" and snippet["image_path"]:
-        path = os.path.join(config.SNIPPET_IMAGE_DIR, snippet["image_path"])
-        if os.path.exists(path):
-            os.remove(path)
+    if snippet:
+        for fn in snippet["files"]:
+            _delete_file(fn)
     with db.get_conn() as conn:
         conn.execute("DELETE FROM snippets WHERE id = ?", (snippet_id,))

@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -6,14 +7,25 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import config, db
-from app.routers import pages, print as print_router, settings as settings_router, snippets
+from app import config, db, print_queue
+from app.routers import (
+    history as history_router,
+    pages,
+    print as print_router,
+    queue as queue_router,
+    settings as settings_router,
+    snippets,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
-    yield
+    worker_task = asyncio.create_task(print_queue.worker_loop())
+    try:
+        yield
+    finally:
+        worker_task.cancel()
 
 
 app = FastAPI(title="tprint", lifespan=lifespan)
@@ -33,8 +45,14 @@ app.include_router(pages.router)
 app.include_router(print_router.router)
 app.include_router(snippets.router)
 app.include_router(settings_router.router)
+app.include_router(history_router.router)
+app.include_router(queue_router.router)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "printer_backend": config.PRINTER_BACKEND}
+    return {
+        "status": "ok",
+        "printer_backend": config.PRINTER_BACKEND,
+        "build_date": config.get_build_date(),
+    }

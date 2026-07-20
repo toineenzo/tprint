@@ -1,16 +1,45 @@
 {% extends "base.html" %}
 {% block title %}{{ strings.app_title }}{% endblock %}
 {% block body %}
-<main class="page">
+
+{% macro queue_options(prefix) %}
+<details class="queue-options">
+  <summary>{{ strings.schedule_options }}</summary>
+  <label for="{{ prefix }}-run-at">{{ strings.run_at_label }}</label>
+  <input type="datetime-local" id="{{ prefix }}-run-at" class="opt-run-at" />
+  <p class="hint">{{ strings.run_at_hint }}</p>
+
+  <label for="{{ prefix }}-recurrence">{{ strings.recurrence_label }}</label>
+  <select id="{{ prefix }}-recurrence" class="opt-recurrence">
+    <option value="">{{ strings.recurrence_none }}</option>
+    <option value="daily">{{ strings.recurrence_daily }}</option>
+    <option value="weekly">{{ strings.recurrence_weekly }}</option>
+    <option value="monthly">{{ strings.recurrence_monthly }}</option>
+  </select>
+
+  <label for="{{ prefix }}-recurrence-time">{{ strings.recurrence_time_label }}</label>
+  <input type="time" id="{{ prefix }}-recurrence-time" class="opt-recurrence-time" value="08:00" />
+</details>
+{% endmacro %}
+
+<div class="layout">
+<main class="page main-col">
   <header class="topbar">
     <h1>{{ strings.app_title }}</h1>
     <nav class="topbar-links">
-      <a class="link-button" href="/settings">{{ strings.settings }}</a>
+      <a class="icon-button" href="/settings" title="{{ strings.settings }}" aria-label="{{ strings.settings }}">⚙️</a>
       {% if auth_enabled %}
-      <form method="post" action="/logout"><button type="submit" class="link-button">{{ strings.logout }}</button></form>
+      <form method="post" action="/logout">
+        <button type="submit" class="icon-button" title="{{ strings.logout }}" aria-label="{{ strings.logout }}">🚪</button>
+      </form>
       {% endif %}
     </nav>
   </header>
+
+  <div id="current-print-bar" class="current-print-bar hidden">
+    <span>🖨️ {{ strings.currently_printing }}: <strong id="current-print-label"></strong></span>
+    <button type="button" id="cancel-current-btn" class="danger-button">{{ strings.cancel_current_print }}</button>
+  </div>
 
   <p id="status" class="status" role="status"></p>
 
@@ -26,31 +55,51 @@
     </div>
 
     <form id="text-form" class="tab-panel" data-tab-panel="text">
-      <textarea name="text" rows="6" placeholder="{{ strings.text_placeholder }}" required></textarea>
-      <button type="submit">{{ strings.print_text_btn }}</button>
+      <div class="input-with-action">
+        <textarea name="text" rows="6" placeholder="{{ strings.text_placeholder }}" required></textarea>
+        <button type="button" class="quick-save-btn" data-form="text-form" title="{{ strings.quick_save_hint }}">✓</button>
+      </div>
+      {{ queue_options("text") }}
+      <div class="button-row">
+        <button type="submit">{{ strings.print_text_btn }}</button>
+        <button type="button" class="secondary-button queue-submit" data-form="text-form">{{ strings.queue_btn }}</button>
+      </div>
     </form>
 
     <form id="image-form" class="tab-panel hidden" data-tab-panel="image" enctype="multipart/form-data">
       <input type="file" name="file" accept="image/*" required />
-      <button type="submit">{{ strings.print_image_btn }}</button>
+      {{ queue_options("image") }}
+      <div class="button-row">
+        <button type="submit">{{ strings.print_image_btn }}</button>
+        <button type="button" class="secondary-button queue-submit" data-form="image-form">{{ strings.queue_btn }}</button>
+        <button type="button" class="secondary-button quick-save-btn" data-form="image-form" title="{{ strings.quick_save_hint }}">✓</button>
+      </div>
     </form>
 
     <form id="pdf-form" class="tab-panel hidden" data-tab-panel="pdf" enctype="multipart/form-data">
       <input type="file" name="file" accept="application/pdf" required />
-      <button type="submit">{{ strings.print_pdf_btn }}</button>
+      {{ queue_options("pdf") }}
+      <div class="button-row">
+        <button type="submit">{{ strings.print_pdf_btn }}</button>
+        <button type="button" class="secondary-button queue-submit" data-form="pdf-form">{{ strings.queue_btn }}</button>
+        <button type="button" class="secondary-button quick-save-btn" data-form="pdf-form" title="{{ strings.quick_save_hint }}">✓</button>
+      </div>
     </form>
 
     <form id="tasks-form" class="tab-panel hidden" data-tab-panel="tasks">
       <input type="text" id="tasks-title" placeholder="{{ strings.tasks_title_placeholder }}" />
       <div id="task-rows"></div>
       <button type="button" id="add-task-row" class="secondary-button">{{ strings.add_item }}</button>
-      <label>
-        <select id="tasks-mode">
-          <option value="single">{{ strings.one_receipt }}</option>
-          <option value="separate">{{ strings.separate_receipts }}</option>
-        </select>
-      </label>
-      <button type="submit">{{ strings.print_checklist_btn }}</button>
+      <label for="tasks-mode">&nbsp;</label>
+      <select id="tasks-mode">
+        <option value="single">{{ strings.one_receipt }}</option>
+        <option value="separate">{{ strings.separate_receipts }}</option>
+      </select>
+      {{ queue_options("tasks") }}
+      <div class="button-row">
+        <button type="submit">{{ strings.print_checklist_btn }}</button>
+        <button type="button" class="secondary-button queue-submit" data-form="tasks-form">{{ strings.queue_btn }}</button>
+      </div>
     </form>
 
     <form id="ics-form" class="tab-panel hidden" data-tab-panel="ics" enctype="multipart/form-data">
@@ -60,7 +109,11 @@
         <option value="single">{{ strings.ics_mode_single }}</option>
         <option value="separate">{{ strings.ics_mode_separate }}</option>
       </select>
-      <button type="submit">{{ strings.print_ics_btn }}</button>
+      {{ queue_options("ics") }}
+      <div class="button-row">
+        <button type="submit">{{ strings.print_ics_btn }}</button>
+        <button type="button" class="secondary-button queue-submit" data-form="ics-form">{{ strings.queue_btn }}</button>
+      </div>
     </form>
   </section>
 
@@ -78,12 +131,14 @@
     <h2>{{ strings.snippets }}</h2>
     <ul id="snippet-list" class="snippet-list">
       {% for snippet in snippets %}
-      <li data-snippet-id="{{ snippet.id }}">
+      <li data-snippet-id="{{ snippet.id }}" data-snippet-kind="{{ snippet.kind }}" data-snippet-name="{{ snippet.name }}">
         <span class="snippet-name">{{ snippet.name }}</span>
-        <span class="snippet-kind">{{ snippet.kind }}</span>
+        <span class="snippet-kind">{{ strings["kind_" ~ snippet.kind] }}</span>
         <span class="snippet-actions">
-          <button class="snippet-print">{{ strings.print }}</button>
-          <button class="snippet-delete">{{ strings.delete }}</button>
+          <button class="icon-button snippet-preview" title="{{ strings.preview }}" aria-label="{{ strings.preview }}">👁️</button>
+          <button class="icon-button snippet-edit" title="{{ strings.edit }}" aria-label="{{ strings.edit }}">✏️</button>
+          <button class="icon-button icon-button-accent snippet-print" title="{{ strings.print }}" aria-label="{{ strings.print }}">🖨️</button>
+          <button class="icon-button icon-button-danger snippet-delete" title="{{ strings.delete }}" aria-label="{{ strings.delete }}">🗑️</button>
         </span>
       </li>
       {% else %}
@@ -96,24 +151,62 @@
       <form id="snippet-form" enctype="multipart/form-data">
         <input type="text" name="name" placeholder="{{ strings.snippet_name_placeholder }}" required />
         <select name="kind" id="snippet-kind">
-          <option value="text">{{ strings.tab_text }}</option>
-          <option value="image">{{ strings.tab_image }}</option>
+          <option value="text">{{ strings.kind_text }}</option>
+          <option value="image">{{ strings.kind_image }}</option>
+          <option value="pdf">{{ strings.kind_pdf }}</option>
         </select>
         <textarea name="text_content" id="snippet-text" rows="4" placeholder="{{ strings.snippet_text_placeholder }}"></textarea>
-        <input type="file" name="file" id="snippet-file" accept="image/*" class="hidden" />
+        <input type="file" name="files" id="snippet-files" accept="image/*" multiple class="hidden" />
+        <p id="snippet-files-hint" class="hint hidden">{{ strings.snippet_multi_image_hint }}</p>
         <button type="submit">{{ strings.save_snippet }}</button>
       </form>
     </details>
   </section>
 
-  <script>window.I18N = {{ strings_json|safe }};</script>
-  <script id="task-row-template" type="text/template">
-    <div class="task-row">
-      <input type="text" class="task-text" placeholder="{{ strings.task_placeholder }}" required />
-      <input type="date" class="task-due" title="{{ strings.due_date }}" />
-      <button type="button" class="task-remove secondary-button">{{ strings.remove_item }}</button>
+  <section class="card">
+    <div class="topbar">
+      <h2>{{ strings.queue_panel_title }}</h2>
+      <button type="button" id="run-queue-btn" class="secondary-button">{{ strings.queue_run_now }}</button>
     </div>
-  </script>
-  <script src="/static/app.js"></script>
+    <ul id="queue-list" class="queue-list">
+      <li class="empty">{{ strings.queue_empty }}</li>
+    </ul>
+  </section>
 </main>
+
+<aside class="history-sidebar">
+  <h2>{{ strings.history_title }}</h2>
+  <ul id="history-list" class="history-list">
+    {% for entry in history %}
+    <li data-entry-id="{{ entry.id }}">
+      {% if entry.preview_image_path %}<img class="history-thumb" src="/history/{{ entry.id }}/image" alt="" />{% endif %}
+      <div class="history-meta">
+        <span class="history-kind">{{ entry.kind }}</span>
+        <span class="history-time">{{ entry.created_at }}</span>
+        {% if entry.preview_text %}<p class="history-preview">{{ entry.preview_text[:120] }}</p>{% endif %}
+      </div>
+    </li>
+    {% else %}
+    <li class="empty">{{ strings.history_empty }}</li>
+    {% endfor %}
+  </ul>
+</aside>
+</div>
+
+<div id="modal-backdrop" class="modal-backdrop hidden">
+  <div class="modal">
+    <button type="button" class="modal-close" id="modal-close">&times;</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>window.I18N = {{ strings_json|safe }};</script>
+<script id="task-row-template" type="text/template">
+  <div class="task-row">
+    <input type="text" class="task-text" placeholder="{{ strings.task_placeholder }}" required />
+    <input type="date" class="task-due" title="{{ strings.due_date }}" />
+    <button type="button" class="task-remove secondary-button">{{ strings.remove_item }}</button>
+  </div>
+</script>
+<script src="/static/app.js"></script>
 {% endblock %}

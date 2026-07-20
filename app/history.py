@@ -1,0 +1,72 @@
+import os
+import uuid
+
+from PIL import Image
+
+from app import config, db
+
+THUMB_WIDTH = 300
+HISTORY_LIMIT = 50
+
+
+def add_entry(kind: str, preview_text: str | None = None, preview_image: Image.Image | None = None) -> None:
+    image_path = None
+    if preview_image is not None:
+        thumb = preview_image.convert("RGB")
+        if thumb.width > THUMB_WIDTH:
+            ratio = THUMB_WIDTH / thumb.width
+            thumb = thumb.resize((THUMB_WIDTH, max(1, int(thumb.height * ratio))))
+        filename = f"{uuid.uuid4().hex}.jpg"
+        thumb.save(os.path.join(config.HISTORY_THUMB_DIR, filename), "JPEG", quality=80)
+        image_path = filename
+
+    with db.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO print_history (kind, preview_text, preview_image_path) VALUES (?, ?, ?)",
+            (kind, (preview_text or "")[:1000] or None, image_path),
+        )
+        _prune(conn)
+
+
+def _prune(conn) -> None:
+    stale = conn.execute(
+        """
+        SELECT preview_image_path FROM print_history WHERE id NOT IN (
+            SELECT id FROM print_history ORDER BY created_at DESC, id DESC LIMIT ?
+        )
+        """,
+        (HISTORY_LIMIT,),
+    ).fetchall()
+    for row in stale:
+        if row["preview_image_path"]:
+            path = os.path.join(config.HISTORY_THUMB_DIR, row["preview_image_path"])
+            if os.path.exists(path):
+                os.remove(path)
+    conn.execute(
+        """
+        DELETE FROM print_history WHERE id NOT IN (
+            SELECT id FROM print_history ORDER BY created_at DESC, id DESC LIMIT ?
+        )
+        """,
+        (HISTORY_LIMIT,),
+    )
+
+
+def list_recent(limit: int = HISTORY_LIMIT) -> list[dict]:
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, kind, preview_text, preview_image_path, created_at "
+            "FROM print_history ORDER BY created_at DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def thumb_path(entry_id: int) -> str | None:
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT preview_image_path FROM print_history WHERE id = ?", (entry_id,)
+        ).fetchone()
+        if not row or not row["preview_image_path"]:
+            return None
+        return os.path.join(config.HISTORY_THUMB_DIR, row["preview_image_path"])
