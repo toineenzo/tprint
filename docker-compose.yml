@@ -25,7 +25,9 @@ services:
       # for how to pass the printer through to that host first.
       - "/dev/usb/lp0:/dev/usb/lp0"
     ports:
-      - "8000:8000"
+      # Host port is configurable in case 8000 is already taken by another
+      # container on this Docker host — set HOST_PORT to override.
+      - "${HOST_PORT:-8000}:8000"
 
 volumes:
   tprint-data:
