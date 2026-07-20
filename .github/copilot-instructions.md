@@ -1,0 +1,11 @@
+# GitHub Copilot instructions for tprint
+
+This project's AI assistant instructions live in `CLAUDE.md` at the
+repository root — architecture, key design decisions, hardware gotchas,
+database migration conventions, i18n conventions, and how to extend the
+project.
+
+Read `CLAUDE.md` in full before making any changes. This file exists only
+so Copilot picks up context automatically via its own convention; it is not
+a separate set of instructions — do not let it drift out of sync with
+`CLAUDE.md`.

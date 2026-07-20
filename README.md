@@ -273,3 +273,11 @@ n8n owns the scheduling and data-fetching — this app just prints text:
 
 Alternatively, POST an `.ics` export straight to `/print/ics` if your
 scheduling source can produce one.
+
+## Contributing / development
+
+See [`CLAUDE.md`](./CLAUDE.md) for the architecture map, key design
+decisions (and why), hardware-specific gotchas learned against real
+hardware, database migration conventions, and how to add a new language or
+a new print type. It's written for AI coding assistants but is equally
+useful for a human making changes.
