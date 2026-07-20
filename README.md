@@ -43,13 +43,13 @@ UI/API without the printer attached.
 | `PRINTER_DEVICE` | `/dev/usb/lp0` | Device node the app writes ESC/POS bytes to. |
 | `PRINTER_WIDTH_PX` | `576` | Print width in pixels (TM-T88V @ 180dpi on 80mm paper). |
 | `DATA_DIR` | `/data` | Where the SQLite DB and saved snippet images live — mount a volume here. |
-| `CADDY_HOSTNAME` | _(required)_ | Internal hostname for the caddy-docker-proxy label, matching your other stacks' pattern. |
 
-`docker-compose.yml` references `APP_PASSWORD`, `SESSION_SECRET`,
-`PRINT_API_TOKEN`, and `CADDY_HOSTNAME` as required (`${VAR:?...}`) — Docker
-Compose/Portainer will refuse to start the stack until they're set, so real
-values never need to be hardcoded into the committed file. Set them via
-Portainer's stack "Environment variables" fields, not by editing the YAML.
+`docker-compose.yml` references `APP_PASSWORD`, `SESSION_SECRET`, and
+`PRINT_API_TOKEN` as required (`${VAR:?...}`) — Docker Compose/Portainer will
+refuse to start the stack until they're set, so real values never need to be
+hardcoded into the committed file. Set them via Portainer's stack
+"Environment variables" fields (or import a local `.env` file there), not by
+editing the YAML.
 
 ## Deployment
 
@@ -78,9 +78,14 @@ Portainer's stack "Environment variables" fields, not by editing the YAML.
    your device path differs.
 
 4. **Expose it.**
-   - *Internal:* the compose file includes example `caddy:` labels for
-     caddy-docker-proxy — update the hostname to match your other stacks so
-     it's reachable over Twingate.
+   - *Internal:* add a block to your Caddyfile pointing at the Docker host's
+     IP and the app's port (adjust to match your existing blocks/style):
+     ```
+     print.toine.dev {
+         reverse_proxy 192.168.1.16:8000
+     }
+     ```
+     Reload Caddy after editing, and it'll be reachable over Twingate.
    - *External:* add `print.toine.dev` as a public hostname on your existing
      Cloudflare Tunnel, pointed at this container's port 8000. Optionally
      add a Cloudflare Access policy here and set `AUTH_ENABLED=false`.

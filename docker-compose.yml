@@ -26,11 +26,6 @@ services:
       - "/dev/usb/lp0:/dev/usb/lp0"
     ports:
       - "8000:8000"
-    labels:
-      # caddy-docker-proxy labels for internal/Twingate access — set
-      # CADDY_HOSTNAME to match the pattern your other stacks use.
-      caddy: "${CADDY_HOSTNAME:?set CADDY_HOSTNAME in the stack's environment variables}"
-      caddy.reverse_proxy: "{{upstreams 8000}}"
 
 volumes:
   tprint-data:
