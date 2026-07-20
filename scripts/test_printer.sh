@@ -22,6 +22,8 @@ if [ ! -w "$DEVICE" ]; then
 fi
 
 # ESC @ (initialize) + test text + 3 line feeds + GS V (partial cut)
-printf '\x1b\x40tprint test print\nIf you can read this,\nthe printer transport works.\n\n\n\x1dV\x01' > "$DEVICE"
+# Octal escapes (\033, \035), not \xHH — dash's printf builtin (Debian's
+# /bin/sh) doesn't support \x hex escapes and will print them as literal text.
+printf '\033@tprint test print\nIf you can read this,\nthe printer transport works.\n\n\n\035V\001' > "$DEVICE"
 
 echo "Test print sent to $DEVICE."
