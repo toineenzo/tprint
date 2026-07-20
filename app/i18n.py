@@ -1,5 +1,9 @@
+import os
+
 LANGUAGES = ("en", "nl")
-DEFAULT_LANGUAGE = "nl"
+DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "nl")
+if DEFAULT_LANGUAGE not in LANGUAGES:
+    DEFAULT_LANGUAGE = "nl"
 
 STRINGS = {
     "en": {

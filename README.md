@@ -117,6 +117,7 @@ UI/API without the printer attached.
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `DEFAULT_LANGUAGE` | `nl` | UI language (`nl` or `en`) shown before a visitor picks one via the footer switcher (which then sets a cookie, overriding this). |
 | `AUTH_ENABLED` | `true` | Gate the web UI behind a shared password. Set `false` if you're relying on a reverse proxy / access policy (e.g. Cloudflare Access) in front of the app instead. |
 | `APP_PASSWORD` | _(empty)_ | The shared password, used when `AUTH_ENABLED=true`. |
 | `SESSION_SECRET` | random per-process | Signs session cookies. Set a fixed value in production or everyone gets logged out on every restart. |
