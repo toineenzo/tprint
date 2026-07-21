@@ -1,8 +1,18 @@
 services:
   tprint:
-    build: .
-    # Or, once you've pushed an image somewhere:
-    # image: ghcr.io/toineenzo/tprint:latest
+    # Prebuilt by .github/workflows/publish.yml on every push to main, so the
+    # deployment host only pulls — it never compiles the frontend or installs
+    # Python packages.
+    #
+    # Set TPRINT_TAG to a `sha-xxxxxxx` tag to pin or roll back to a specific
+    # build; leave it unset to track the latest push to main.
+    image: ghcr.io/toineenzo/tprint:${TPRINT_TAG:-latest}
+    # `latest` is a moving tag, so without this the host would keep running
+    # whatever it pulled the first time.
+    pull_policy: always
+    # To go back to building on the host instead, comment out the two lines
+    # above and uncomment this:
+    # build: .
     restart: unless-stopped
     environment:
       TZ: "${TZ:-Europe/Amsterdam}" # adjust to your timezone, used for snippet timestamps
