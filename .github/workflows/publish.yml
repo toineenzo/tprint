@@ -1,0 +1,66 @@
+name: Publish image
+
+# Builds the container image and pushes it to GHCR so the deployment host
+# doesn't have to compile anything — it just pulls. See the deployment section
+# of README.md for how the Portainer stack consumes this.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - ".cursorrules"
+      - ".windsurfrules"
+      - ".clinerules"
+  workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # `latest` is what the compose file tracks; the sha tag exists so a
+          # specific build can be pinned or rolled back to by name.
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Proxmox is x86-only, so a single amd64 image covers the target
+          # host. Building extra platforms would only slow this down.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Without this, every run reinstalls the npm and pip dependencies
+          # from scratch.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "Pushed:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

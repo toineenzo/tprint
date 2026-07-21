@@ -249,7 +249,8 @@ stages that can fail independently.
 - No comments except where the *why* is genuinely non-obvious (see
   `printer.py` for examples — the banding fix and the cancellation model
   both have one because the reasoning isn't derivable from the code alone).
-- Python 3.12+, `from __future__` not needed, modern type hints
+- Python 3.14 in the image (`python:3.14-slim`); 3.12+ syntax is the floor.
+  `from __future__` not needed, modern type hints
   (`str | None`, `list[dict]`) used throughout.
 - FastAPI routes are grouped one-file-per-resource under `routers/`. Auth
   is a `Depends(auth.require_api_auth)` on anything that returns data or
