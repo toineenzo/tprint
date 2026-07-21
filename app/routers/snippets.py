@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 
 from app import actions, auth, print_queue
 from app import snippets as snippets_store
+from app.schemas import QueueOptions, queue_options_query
 
 router = APIRouter(prefix="/snippets", tags=["snippets"])
 
@@ -94,6 +95,10 @@ async def update_snippet(
         if uploads:
             replace_pdf = (await uploads[0].read(), uploads[0].filename)
         snippets_store.update_snippet(snippet_id, name, replace_pdf=replace_pdf)
+    else:
+        # Unreachable while the snippets table's CHECK constraint holds, but
+        # without it an unknown kind reported success having done nothing.
+        raise HTTPException(500, f"snippet {snippet_id} has an unknown kind")
 
     return {"status": "updated"}
 
@@ -107,24 +112,21 @@ def delete_snippet(snippet_id: int, _: None = Depends(auth.require_api_auth)):
 @router.post("/{snippet_id}/print")
 def print_snippet(
     snippet_id: int,
-    queue: bool = False,
-    run_at: Optional[str] = None,
-    recurrence: Optional[str] = None,
-    recurrence_time: Optional[str] = None,
+    options: QueueOptions = Depends(queue_options_query),
     _: None = Depends(auth.require_api_auth),
 ):
     snippet = snippets_store.get_snippet(snippet_id)
     if not snippet:
         raise HTTPException(404, "snippet not found")
 
-    if print_queue.should_queue(queue, run_at, recurrence):
+    if print_queue.should_queue(options.queue, options.run_at, options.recurrence):
         job_id = print_queue.enqueue(
             "snippet",
             {"snippet_id": snippet_id},
             label=snippet["name"],
-            run_at=run_at,
-            recurrence=recurrence,
-            recurrence_time=recurrence_time,
+            run_at=options.run_at,
+            recurrence=options.recurrence,
+            recurrence_time=options.recurrence_time,
         )
         return {"status": "queued", "job_id": job_id}
 

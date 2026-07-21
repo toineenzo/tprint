@@ -6,3 +6,8 @@ __pycache__/
 data/
 *.db
 .DS_Store
+
+# Never ship a host-built bundle or host node_modules into the image — the
+# frontend stage builds both from source.
+node_modules/
+app/static/dist/

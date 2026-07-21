@@ -27,17 +27,25 @@ app/
   printer.py             ESC/POS byte building, the single physical-write choke point, cancellation
   actions.py               Shared "print this + log history" logic — instant AND queued paths both call these
   print_queue.py             Queue/schedule/recurrence + the background asyncio worker
-  history.py                  Print history persistence + thumbnail generation
-  settings.py                  Printer "settings" (header/footer/logo/text style) — app-level only, see printer.py docstring
-  snippets.py                   Snippet CRUD (text/image/pdf, multi-file)
-  content.py                     Surprise-me (joke/recipe/fortune) loader + formatter, language-aware
-  content/*.json                  Per-language joke/fortune/recipe data (see i18n section below)
-  i18n.py                          Translation strings + language list
-  ics_import.py                     .ics calendar parsing
-  templating.py                      Jinja2Templates instance + global template vars (build_date, all_languages, native_names)
-  routers/                            One file per resource: pages, print, snippets, settings, history, queue
-  templates/*.html                     base.html (shell + footer/lang-switch) extended by login/index/settings
-  static/{app.js,style.css}             All client-side logic in one app.js — no build step, no framework
+  schemas.py                  Shared pydantic request models + queue-option validation (see below)
+  history.py                   Print history persistence + thumbnail generation
+  settings.py                   Printer "settings" (header/footer/logo/text style) — app-level only, see printer.py docstring
+  snippets.py                    Snippet CRUD (text/image/pdf, multi-file)
+  files.py                        Upload filename/extension handling shared by every upload path
+  content.py                       Surprise-me (joke/recipe/fortune) loader + formatter, language-aware
+  content/*.json                    Per-language joke/fortune/recipe data (see i18n section below)
+  i18n.py                            Translation strings + language list
+  ics_import.py                       .ics calendar parsing
+  templating.py                        Jinja2Templates instance + global template vars (build_date, asset_version)
+  routers/                              One file per resource: pages, print, snippets, settings, history, queue
+  templates/shell.html                   The one page template: mounts React + injects window.__TPRINT__
+  static/dist/                            Vite build output (gitignored — built by the Dockerfile's frontend stage)
+
+frontend/                 React + Mantine UI. See frontend/README.md for UI conventions.
+  src/theme.ts              The only file that names a colour — semantic roles live here
+  src/constants/            contentTypes.ts: kind -> icon + colour + label, used by history/queue/snippets
+  src/components/ui/        Shared primitives (Buttons, IconActionButton, SectionCard, TypeBadge, …)
+  src/pages/                IndexPage, SettingsPage, LoginPage — picked by __TPRINT__.page
 ```
 
 ## Key design decisions (and why)
@@ -94,10 +102,25 @@ raw command bytes.
 every `POLL_SECONDS`). Recurring jobs (`recurrence` set) reschedule
 themselves to the next occurrence on success instead of completing — see
 `print_queue._next_occurrence()`. Scheduling uses naive local time
-throughout (both the browser's `datetime-local` input and the server's
-`datetime.now()`) — there's no timezone conversion, so this only behaves
-correctly when the server's `TZ` matches the user's expectation (it's a
-`docker-compose.yml` env var for exactly this reason).
+throughout (the browser sends a naive local string and the server compares
+against `datetime.now()`) — there's no timezone conversion, so this only
+behaves correctly when the server's `TZ` matches the user's expectation
+(it's a `docker-compose.yml` env var for exactly this reason).
+
+**That naive-local contract is a trap on the frontend.** The date picker holds
+a JS `Date`, and `toISOString()` would serialize it as UTC — silently shifting
+every scheduled job by the server's UTC offset. `frontend/src/dates.ts`'s
+`toNaiveDateTime()` is the only correct way to serialize `run_at`; use it.
+
+**Queue options are validated in one place: `app/schemas.py`.** The same four
+options (`queue`, `run_at`, `recurrence`, `recurrence_time`) arrive as a JSON
+body, as multipart form fields, and as query params, so one `QueueOptions`
+model validates all three via the `queue_options_form` / `queue_options_query`
+dependencies. This matters beyond tidiness: an unvalidated `recurrence` used to
+reach `_next_occurrence()`, match none of its branches, and return a time in
+the *past* — leaving the job pending-and-due so the worker reprinted it every
+15 seconds forever. Keep new scheduling options in that model rather than
+adding per-endpoint checks.
 
 ## Database & migrations
 
@@ -121,34 +144,39 @@ change is additive or structural:
   shipped. Never assume `CREATE TABLE IF NOT EXISTS` is enough once a table
   already has a different shape in the wild.
 
-## i18n: adding a new language
+## i18n
 
-Two things, both required, and they must stay in sync:
+The app ships **English and Dutch**. English is the in-code default;
+`DEFAULT_LANGUAGE=nl` in the environment makes a deployment come up in Dutch
+(that's how the maintainer's own instance is configured). Visitors switch
+per-browser via a cookie, so the env var only sets the initial language.
 
-1. **`i18n.py`**: add the language code to `LANGUAGES`, a display name to
-   `NATIVE_NAMES` (in that language's own script, e.g. `"中文"` not
-   `"Chinese"`), and a full `STRINGS["<code>"]` dict — every key that
-   exists in `STRINGS["en"]` must exist in the new dict. There's no
-   fallback-to-English for individual missing keys.
-2. **`content/{jokes,fortunes,recipes}_<code>.json`**: 20 jokes, 20
-   fortunes, 8 recipes (recipes are `{title, ingredients, steps}` objects).
-   Write natural, idiomatic content for that language — not a literal
-   translation of the English set. `content.py`'s `_load()` falls back to
-   the English file if a language-specific one is missing, so the app
-   won't crash if you forget one, but the surprise-me button will silently
-   serve English content in that language's UI, which reads as a bug to a
-   user — don't rely on the fallback, always add the file.
+**Adding a UI string** — all three, and they must stay in sync:
 
-Verify parity after editing (this exact check caught nothing wrong across
-10 languages when last run, but it's the way to be sure):
+1. `STRINGS["en"]` **and** `STRINGS["nl"]` in `app/i18n.py`. There is no
+   per-key fallback to English; a key missing from one language is a `KeyError`
+   at render time.
+2. The `StringKey` union in `frontend/src/i18n/strings.ts`, so the frontend can
+   reference it. A typo there is a compile error rather than a blank label.
+
+**Adding a language** — additionally add the code to `LANGUAGES`, a display
+name to `NATIVE_NAMES` in that language's own script (`"Nederlands"`, not
+`"Dutch"`), and `content/{jokes,fortunes,recipes}_<code>.json` (20 jokes, 20
+fortunes, 8 recipes — recipes are `{title, ingredients, steps}` objects).
+Write idiomatic content for that language rather than translating the English
+set. `content.py`'s `_load()` falls back to the English file when one is
+missing, so nothing crashes — but the surprise-me button then silently serves
+English inside a non-English UI, which reads as a bug. Don't rely on the
+fallback.
+
+Verify parity after editing:
 
 ```sh
 python3 -c "
 from app import i18n
 en = set(i18n.STRINGS['en'])
 for lang in i18n.LANGUAGES:
-    missing = en - set(i18n.STRINGS[lang])
-    print(lang, 'missing:', missing or 'none')
+    print(lang, 'missing:', (en - set(i18n.STRINGS[lang])) or 'none')
 "
 ```
 
@@ -179,6 +207,19 @@ set -a; source .env; set +a
 uvicorn app.main:app --reload
 ```
 
+The UI is a separate build. In another shell:
+
+```sh
+cd frontend && npm install
+npm run dev            # vite build --watch, writes app/static/dist
+```
+
+FastAPI serves the built bundle, so there's no dev server or proxy to
+configure — the session cookie and the API stay same-origin. Restart uvicorn
+to pick up a new bundle (the cache-busting `asset_version` is per-process
+locally). `app/static/dist/` is gitignored; **the app will not render until
+you've built it at least once.**
+
 `PRINTER_BACKEND=dummy` makes `printer._send()` a no-op — everything else
 (job building, history logging, the queue worker) still runs normally, so
 this is sufficient for testing anything except actual physical print
@@ -191,10 +232,17 @@ schema, seeding a synthetic old-shape DB and confirming the app boots and
 the data survives. Follow the same approach for new changes: there's
 nothing to run, but there is a bar to clear before calling something done.
 
-For anything touching `Dockerfile` or `requirements.txt`, verify the image
-actually builds and the container actually starts (`docker build` +
-`docker run` + hit `/health`) before considering the change finished — a
-requirements or Dockerfile typo won't show up in a local venv test.
+For frontend changes, `cd frontend && npm run build` type-checks before it
+bundles, so a type error fails the build (and therefore the Docker image)
+rather than shipping. Also load the page and confirm the browser console is
+clean — a React render error shows up there, not in the Python log.
+
+For anything touching `Dockerfile`, `requirements.txt`, or
+`frontend/package.json`, verify the image actually builds and the container
+actually starts (`docker build` + `docker run` + hit `/health` + load `/`)
+before considering the change finished — a dependency or Dockerfile typo won't
+show up in a local venv/`npm run dev` test, and the image now has two build
+stages that can fail independently.
 
 ## Coding conventions
 
@@ -204,26 +252,37 @@ requirements or Dockerfile typo won't show up in a local venv test.
 - Python 3.12+, `from __future__` not needed, modern type hints
   (`str | None`, `list[dict]`) used throughout.
 - FastAPI routes are grouped one-file-per-resource under `routers/`. Auth
-  is a `Depends(auth.require_api_auth)` (session or bearer token) on
-  machine-callable endpoints, or a manual `auth.web_page_authed(request)`
-  check + redirect on browser page routes (GET `/`, `/settings`).
-- No JS framework, no build step — `app.js` is one file, vanilla DOM APIs.
-  Keep it that way unless the app's complexity genuinely outgrows it.
-- i18n strings are always looked up through `i18n.t(lang)`, never
-  hardcoded in templates or Python — see the i18n section above before
-  adding any new user-facing string.
+  is a `Depends(auth.require_api_auth)` on anything that returns data or
+  performs an action — it raises a real 401. The
+  `auth.web_page_authed(request)` + redirect pattern is **only** for HTML page
+  routes (GET `/`, `/settings`, `/login` in `routers/pages.py`); using it on a
+  data endpoint hands an XHR caller a 200 with a login page in the body.
+- Anything an HTTP response exposes goes through a "public" projection —
+  `settings.public_settings()`, `history.list_recent_public()` — so internal
+  on-disk paths and SQLite's 0/1 booleans stay out of the API.
+- The frontend is React + Mantine built by Vite (`frontend/`). **Read
+  `frontend/README.md` before touching the UI** — it defines the semantic
+  colour roles, the shared button/icon primitives, and the content-type map,
+  which exist so new features stay visually consistent by construction.
+- i18n strings are always looked up through `i18n.t(lang)` server-side and
+  `useStrings()` client-side, never hardcoded — see the i18n section above
+  before adding any user-facing string.
 
 ## How to extend (common tasks)
 
 - **New "print this" content type** (like checklist/ics were added): add a
   `printer.print_X()` following the existing `_print_job(content_fn)`
   pattern, add `actions.print_X()` that calls it and logs history, add a
-  route in `routers/print.py` (reuse the `QueueOptions` base model if it
-  should be queueable), add UI in `index.html` + `app.js`.
+  route in `routers/print.py` (inherit `schemas.QueueOptions`, or depend on
+  `queue_options_form`, if it should be queueable), handle the new `kind` in
+  `print_queue._execute()`, add the kind to
+  `frontend/src/constants/contentTypes.ts` so history/queue render it with an
+  icon, and add a tab in `frontend/src/components/print/`.
 - **New setting**: add a column to the `settings` table in `db.py`
   (additive, no migration needed — it's a single-row table), read/write it
-  in `settings.py`, add a form field in `templates/settings.html`, apply it
-  in `printer.py`'s `_print_job` if it affects output.
+  in `settings.py` **and expose it in `public_settings()`**, add a field to
+  `frontend/src/pages/SettingsPage.tsx`, apply it in `printer.py`'s
+  `_print_job` if it affects output.
 - **New language**: see the i18n section above.
 
 ## Alias files for other AI assistants

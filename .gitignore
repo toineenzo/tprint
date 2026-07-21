@@ -5,3 +5,8 @@ __pycache__/
 data/
 *.db
 .DS_Store
+
+# Frontend: source is committed, the built bundle is not — the Docker frontend
+# stage builds it, and `npm run dev` regenerates it locally.
+node_modules/
+app/static/dist/

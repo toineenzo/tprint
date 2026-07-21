@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: "${TZ:-Europe/Amsterdam}" # adjust to your timezone, used for snippet timestamps
-      DEFAULT_LANGUAGE: "${DEFAULT_LANGUAGE:-nl}" # "nl" or "en" — default UI language before a visitor picks one
+      DEFAULT_LANGUAGE: "${DEFAULT_LANGUAGE:-en}" # "en" or "nl" — default UI language before a visitor picks one
 
       # --- Auth --- fill these in via Portainer's stack environment variables,
       # not by editing this file, so real secrets never end up committed.

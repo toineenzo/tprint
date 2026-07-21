@@ -1,38 +1,18 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from pydantic import BaseModel
 
 from app import actions, auth, i18n, ics_import, print_queue, printer
+from app.schemas import (
+    ChecklistPrintRequest,
+    PrintMode,
+    QueueOptions,
+    RandomPrintRequest,
+    TextPrintRequest,
+    queue_options_form,
+)
 
 router = APIRouter(prefix="/print", tags=["print"])
-
-
-class QueueOptions(BaseModel):
-    queue: bool = False
-    run_at: Optional[str] = None
-    recurrence: Optional[str] = None
-    recurrence_time: Optional[str] = None
-
-
-class TextPrintRequest(QueueOptions):
-    text: str
-
-
-class RandomPrintRequest(QueueOptions):
-    kind: Optional[str] = None
-    lang: Optional[str] = None
-
-
-class TaskItem(BaseModel):
-    text: str
-    due: Optional[str] = None
-
-
-class ChecklistPrintRequest(QueueOptions):
-    title: Optional[str] = None
-    items: list[TaskItem]
-    mode: str = "single"
 
 
 def _resolve_lang(request: Request, override: Optional[str]) -> str:
@@ -55,6 +35,10 @@ def _queued_response(body: QueueOptions, kind: str, payload: dict, label: str) -
     return {"status": "queued", "job_id": job_id}
 
 
+def _is_queued(options: QueueOptions) -> bool:
+    return print_queue.should_queue(options.queue, options.run_at, options.recurrence)
+
+
 @router.post("/text")
 def print_text(body: TextPrintRequest, _: None = Depends(auth.require_api_auth)):
     if not body.text.strip():
@@ -69,19 +53,13 @@ def print_text(body: TextPrintRequest, _: None = Depends(auth.require_api_auth))
 @router.post("/image")
 async def print_image(
     file: UploadFile = File(...),
-    queue: bool = Form(False),
-    run_at: Optional[str] = Form(None),
-    recurrence: Optional[str] = Form(None),
-    recurrence_time: Optional[str] = Form(None),
+    options: QueueOptions = Depends(queue_options_form),
     _: None = Depends(auth.require_api_auth),
 ):
     data = await file.read()
-    options = QueueOptions(queue=queue, run_at=run_at, recurrence=recurrence, recurrence_time=recurrence_time)
-    queued = _queued_response(
-        options, "image", {"file": print_queue.save_upload(data, file.filename or "image")}, label="image"
-    )
-    if queued:
-        return queued
+    if _is_queued(options):
+        saved = print_queue.save_upload(data, file.filename or "image")
+        return _queued_response(options, "image", {"file": saved}, label="image")
     actions.print_image(printer.image_from_upload(data))
     return {"status": "printed"}
 
@@ -89,19 +67,13 @@ async def print_image(
 @router.post("/pdf")
 async def print_pdf(
     file: UploadFile = File(...),
-    queue: bool = Form(False),
-    run_at: Optional[str] = Form(None),
-    recurrence: Optional[str] = Form(None),
-    recurrence_time: Optional[str] = Form(None),
+    options: QueueOptions = Depends(queue_options_form),
     _: None = Depends(auth.require_api_auth),
 ):
     data = await file.read()
-    options = QueueOptions(queue=queue, run_at=run_at, recurrence=recurrence, recurrence_time=recurrence_time)
-    queued = _queued_response(
-        options, "pdf", {"file": print_queue.save_upload(data, file.filename or "file.pdf")}, label="PDF"
-    )
-    if queued:
-        return queued
+    if _is_queued(options):
+        saved = print_queue.save_upload(data, file.filename or "file.pdf")
+        return _queued_response(options, "pdf", {"file": saved}, label="PDF")
     actions.print_pdf(data)
     return {"status": "printed"}
 
@@ -110,8 +82,6 @@ async def print_pdf(
 def print_random(
     body: RandomPrintRequest, request: Request, _: None = Depends(auth.require_api_auth)
 ):
-    if body.kind and body.kind not in ("joke", "recipe", "fortune"):
-        raise HTTPException(400, "kind must be 'joke', 'recipe', or 'fortune'")
     lang = _resolve_lang(request, body.lang)
     queued = _queued_response(
         body, "random", {"kind": body.kind, "lang": lang}, label=body.kind or "surprise"
@@ -126,8 +96,6 @@ def print_random(
 def print_checklist(
     body: ChecklistPrintRequest, request: Request, _: None = Depends(auth.require_api_auth)
 ):
-    if body.mode not in ("single", "separate"):
-        raise HTTPException(400, "mode must be 'single' or 'separate'")
     items = [item.model_dump() for item in body.items if item.text.strip()]
     if not items:
         raise HTTPException(400, "items must not be empty")
@@ -147,16 +115,14 @@ def print_checklist(
 @router.post("/ics")
 async def print_ics(
     file: UploadFile = File(...),
-    mode: str = Form("single"),
-    queue: bool = Form(False),
-    run_at: Optional[str] = Form(None),
-    recurrence: Optional[str] = Form(None),
-    recurrence_time: Optional[str] = Form(None),
+    mode: PrintMode = Form("single"),
+    options: QueueOptions = Depends(queue_options_form),
     _: None = Depends(auth.require_api_auth),
 ):
-    if mode not in ("single", "separate"):
-        raise HTTPException(400, "mode must be 'single' or 'separate'")
     data = await file.read()
+    # Parsed before anything is stored, so a malformed file is rejected up
+    # front instead of failing later inside the background worker (and so a
+    # rejected upload leaves nothing behind in QUEUE_UPLOAD_DIR).
     try:
         events = ics_import.parse_ics(data)
     except Exception as exc:
@@ -164,14 +130,10 @@ async def print_ics(
     if not events:
         raise HTTPException(400, "no events found in .ics file")
 
-    options = QueueOptions(queue=queue, run_at=run_at, recurrence=recurrence, recurrence_time=recurrence_time)
-    queued = _queued_response(
-        options,
-        "ics",
-        {"file": print_queue.save_upload(data, file.filename or "calendar.ics"), "mode": mode},
-        label=f"{len(events)} events",
-    )
-    if queued:
-        return queued
+    if _is_queued(options):
+        saved = print_queue.save_upload(data, file.filename or "calendar.ics")
+        return _queued_response(
+            options, "ics", {"file": saved, "mode": mode}, label=f"{len(events)} events"
+        )
     actions.print_ics(events, mode)
     return {"status": "printed", "count": len(events)}

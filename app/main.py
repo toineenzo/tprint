@@ -1,6 +1,6 @@
 import asyncio
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -26,6 +26,10 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         worker_task.cancel()
+        # Awaited so cancellation actually propagates into the worker before
+        # the process exits, rather than being requested and never delivered.
+        with suppress(asyncio.CancelledError):
+            await worker_task
 
 
 app = FastAPI(title="tprint", lifespan=lifespan)

@@ -8,17 +8,7 @@ router = APIRouter(prefix="/history", tags=["history"])
 
 @router.get("")
 def list_history(_: None = Depends(auth.require_api_auth)):
-    entries = history.list_recent()
-    return [
-        {
-            "id": e["id"],
-            "kind": e["kind"],
-            "preview_text": e["preview_text"],
-            "has_image": bool(e["preview_image_path"]),
-            "created_at": e["created_at"],
-        }
-        for e in entries
-    ]
+    return history.list_recent_public()
 
 
 @router.get("/{entry_id}/image")

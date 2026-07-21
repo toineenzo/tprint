@@ -5,17 +5,17 @@ import os
 import uuid
 from datetime import datetime, timedelta
 
-from app import actions, config, db, ics_import, printer
+from app import actions, config, db, files, ics_import, printer
 
 logger = logging.getLogger("tprint.queue")
 
 RECURRENCES = ("daily", "weekly", "monthly")
+DEFAULT_RECURRENCE_TIME = "08:00"
 POLL_SECONDS = 15
 
 
 def save_upload(data: bytes, filename: str) -> str:
-    ext = (filename or "").rsplit(".", 1)[-1].lower() or "bin"
-    saved_name = f"{uuid.uuid4().hex}.{ext}"
+    saved_name = f"{uuid.uuid4().hex}.{files.safe_extension(filename)}"
     with open(os.path.join(config.QUEUE_UPLOAD_DIR, saved_name), "wb") as f:
         f.write(data)
     return saved_name
@@ -98,16 +98,6 @@ def cancel_job(job_id: int) -> bool:
         return cur.rowcount > 0
 
 
-def delete_job(job_id: int) -> bool:
-    with db.get_conn() as conn:
-        row = conn.execute("SELECT payload, status FROM print_jobs WHERE id = ?", (job_id,)).fetchone()
-        if not row or row["status"] == "running":
-            return False
-        conn.execute("DELETE FROM print_jobs WHERE id = ?", (job_id,))
-        _cleanup_payload_files(json.loads(row["payload"]))
-        return True
-
-
 def _cleanup_payload_files(payload: dict) -> None:
     if payload.get("file"):
         _delete_upload(payload["file"])
@@ -134,9 +124,28 @@ def _due_job_ids() -> list[int]:
         return [row["id"] for row in rows]
 
 
-def _next_occurrence(recurrence: str, recurrence_time: str, after: datetime) -> datetime:
-    parts = recurrence_time.split(":")
-    hour, minute = int(parts[0]), int(parts[1])
+def _parse_time(recurrence_time: str | None) -> tuple[int, int]:
+    """Hour/minute from an "HH:MM" string, falling back to a sane default.
+
+    New jobs are validated at the API boundary (app/schemas.py), but rows
+    written before that validation existed can hold NULL or junk here, and the
+    background worker must not die on one of them.
+    """
+    try:
+        hour, minute = (recurrence_time or "").split(":")[:2]
+        return int(hour), int(minute)
+    except (ValueError, AttributeError):
+        return _parse_time(DEFAULT_RECURRENCE_TIME)
+
+
+def _next_occurrence(recurrence: str, recurrence_time: str | None, after: datetime) -> datetime:
+    # Without this guard an unrecognized recurrence fell through every branch
+    # below and returned a time in the *past*, leaving the job pending and due
+    # — so the worker reprinted it every POLL_SECONDS, forever.
+    if recurrence not in RECURRENCES:
+        raise ValueError(f"unknown recurrence: {recurrence!r}")
+
+    hour, minute = _parse_time(recurrence_time)
     candidate = after.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= after:
         if recurrence == "daily":
@@ -185,15 +194,28 @@ def _run_job(job_id: int) -> None:
                 (error, job_id),
             )
         elif job["recurrence"]:
-            next_run = _next_occurrence(job["recurrence"], job["recurrence_time"], datetime.now())
-            conn.execute(
-                """
-                UPDATE print_jobs
-                SET status = 'pending', run_at = ?, last_run_at = datetime('now'), error = NULL
-                WHERE id = ?
-                """,
-                (next_run.isoformat(timespec="seconds"), job_id),
-            )
+            try:
+                next_run = _next_occurrence(
+                    job["recurrence"], job["recurrence_time"], datetime.now()
+                )
+            except ValueError as exc:
+                # A job we can't reschedule is marked failed rather than left
+                # pending-and-due, which is what made it reprint in a loop.
+                logger.error("cannot reschedule job %s: %s", job_id, exc)
+                conn.execute(
+                    "UPDATE print_jobs SET status = 'failed', error = ?, "
+                    "last_run_at = datetime('now') WHERE id = ?",
+                    (str(exc), job_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE print_jobs
+                    SET status = 'pending', run_at = ?, last_run_at = datetime('now'), error = NULL
+                    WHERE id = ?
+                    """,
+                    (next_run.isoformat(timespec="seconds"), job_id),
+                )
         else:
             conn.execute(
                 "UPDATE print_jobs SET status = 'done', last_run_at = datetime('now') WHERE id = ?",

@@ -62,6 +62,21 @@ def list_recent(limit: int = HISTORY_LIMIT) -> list[dict]:
         return [dict(row) for row in rows]
 
 
+def list_recent_public(limit: int = HISTORY_LIMIT) -> list[dict]:
+    """Recent entries as the API exposes them — the stored thumbnail filename
+    is replaced by a has_image flag, since the image is served by id."""
+    return [
+        {
+            "id": entry["id"],
+            "kind": entry["kind"],
+            "preview_text": entry["preview_text"],
+            "has_image": bool(entry["preview_image_path"]),
+            "created_at": entry["created_at"],
+        }
+        for entry in list_recent(limit)
+    ]
+
+
 def thumb_path(entry_id: int) -> str | None:
     with db.get_conn() as conn:
         row = conn.execute(

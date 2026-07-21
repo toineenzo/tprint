@@ -1,72 +1,56 @@
-import os
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
-from app import auth, config, i18n
+from app import auth
 from app import settings as settings_store
-from app.templating import templates
+from app.schemas import Align
 
-router = APIRouter()
+# JSON API. The settings *page* is a browser route and lives in routers/pages.py
+# with the other HTML shells.
+#
+# These used to be form-post endpoints that returned RedirectResponse("/login")
+# when unauthenticated, which an XHR caller reads as a successful 200 with a
+# login page in the body. Depends(require_api_auth) raises a real 401 instead.
+router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-@router.get("/settings/logo")
-def settings_logo(request: Request):
-    if not auth.web_page_authed(request):
-        return RedirectResponse("/login")
-    current = settings_store.get_settings()
-    if not current["header_logo_path"]:
+@router.get("")
+def read_settings(_: None = Depends(auth.require_api_auth)):
+    return settings_store.public_settings()
+
+
+@router.get("/logo")
+def read_logo(_: None = Depends(auth.require_api_auth)):
+    path = settings_store.logo_path()
+    if not path:
         raise HTTPException(404, "no logo set")
-    path = os.path.join(config.DATA_DIR, current["header_logo_path"])
-    if not os.path.exists(path):
-        raise HTTPException(404, "logo file missing")
     return FileResponse(path)
 
 
-@router.get("/settings")
-def settings_page(request: Request):
-    if not auth.web_page_authed(request):
-        return RedirectResponse("/login")
-    lang = i18n.from_request(request)
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "strings": i18n.t(lang),
-            "lang": lang,
-            "settings": settings_store.get_settings(),
-        },
-    )
-
-
-@router.post("/settings")
-async def settings_save(
-    request: Request,
+@router.post("")
+async def save_settings(
     header_text: str = Form(""),
     footer_text: str = Form(""),
-    default_align: str = Form("left"),
-    default_bold: Optional[str] = Form(None),
-    default_double_width: Optional[str] = Form(None),
-    remove_logo: Optional[str] = Form(None),
+    default_align: Align = Form("left"),
+    default_bold: bool = Form(False),
+    default_double_width: bool = Form(False),
+    remove_logo: bool = Form(False),
     logo: Optional[UploadFile] = File(None),
+    _: None = Depends(auth.require_api_auth),
 ):
-    if not auth.web_page_authed(request):
-        return RedirectResponse("/login")
-
     settings_store.update_settings(
         header_text=header_text.strip(),
         footer_text=footer_text.strip(),
         default_align=default_align,
-        default_bold=bool(default_bold),
-        default_double_width=bool(default_double_width),
+        default_bold=default_bold,
+        default_double_width=default_double_width,
     )
 
     if remove_logo:
         settings_store.remove_logo()
     elif logo is not None and logo.filename:
-        data = await logo.read()
-        ext = (logo.filename or "png").rsplit(".", 1)[-1]
-        settings_store.set_logo(data, ext)
+        settings_store.set_logo(await logo.read(), logo.filename)
 
-    return RedirectResponse("/settings", status_code=303)
+    return settings_store.public_settings()

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>{{ title }}</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/static/dist/app.css?v={{ asset_version }}" />
+  {# Mantine's ColorSchemeScript, inlined: resolves light/dark before first
+     paint so an auto-themed page doesn't flash the wrong scheme. #}
+  <script>
+    try {
+      var stored = window.localStorage.getItem("mantine-color-scheme-value");
+      var scheme = stored === "light" || stored === "dark" ? stored
+        : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-mantine-color-scheme", scheme);
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  {#
+    The single React entry point for every page. Which page renders is decided
+    by __TPRINT__.page rather than by a client-side router, so /, /settings and
+    /login keep their existing server-side auth redirects.
+  #}
+  <script>window.__TPRINT__ = {{ bootstrap_json|safe }};</script>
+  <script type="module" src="/static/dist/app.js?v={{ asset_version }}"></script>
+</body>
+</html>

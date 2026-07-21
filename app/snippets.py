@@ -2,15 +2,21 @@ import json
 import os
 import uuid
 
-from app import config, db
+from app import config, db, files
 
 ALLOWED_IMAGE_EXTS = ("png", "jpg", "jpeg", "gif", "bmp", "webp")
 ALLOWED_PDF_EXTS = ("pdf",)
 
 
 def _parse_row(row) -> dict:
+    """A snippet with its stored filenames decoded into a `files` list.
+
+    The raw `file_paths` JSON column is dropped rather than passed through —
+    it's the same data in a less usable form, and nothing downstream reads it.
+    """
     data = dict(row)
-    data["files"] = json.loads(data["file_paths"]) if data["file_paths"] else []
+    raw = data.pop("file_paths", None)
+    data["files"] = json.loads(raw) if raw else []
     return data
 
 
@@ -31,10 +37,7 @@ def file_path(filename: str) -> str:
 
 
 def _save_file(data: bytes, filename: str, allowed_exts: tuple[str, ...]) -> str:
-    ext = (filename or "").rsplit(".", 1)[-1].lower()
-    if ext not in allowed_exts:
-        ext = allowed_exts[0]
-    saved_name = f"{uuid.uuid4().hex}.{ext}"
+    saved_name = f"{uuid.uuid4().hex}.{files.allowed_extension(filename, allowed_exts)}"
     with open(file_path(saved_name), "wb") as f:
         f.write(data)
     return saved_name

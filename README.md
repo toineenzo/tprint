@@ -20,7 +20,7 @@ any particular platform beyond Docker (or a plain Python environment).
   images (printed in sequence on one receipt), or a PDF. Preview any
   snippet before printing, and edit it later (rename, change the text,
   add/remove images, or replace the PDF) without recreating it.
-- **Quick save-and-print**: a small ✓ button next to the text/image/PDF
+- **Quick save-and-print**: a save button next to the text/image/PDF
   print forms prints your current input and saves it as a snippet in one
   step, for things you'll want to print again.
 - **Surprise me**: a bundled, curated (not API-dependent) list of jokes,
@@ -40,9 +40,9 @@ any particular platform beyond Docker (or a plain Python environment).
   logo image, with a `{datetime}` placeholder) applied to every receipt, plus
   default text style (bold/double-width/alignment) — all editable from the
   web UI instead of the printer's own paper self-test menu.
-- **Localization**: UI and surprise-me content available in English or Dutch
-  (Dutch by default), switchable per browser (cookie-based, no account
-  needed).
+- **Localization**: UI and surprise-me content available in English or Dutch,
+  switchable per browser (cookie-based, no account needed). Set
+  `DEFAULT_LANGUAGE` to pick which one new visitors get.
 - **REST API**: every print action is an HTTP endpoint, usable from Home
   Assistant `rest_command`, n8n, curl, or anything else.
 - **Optional auth**: a simple shared-password login for the web UI (skip it
@@ -101,7 +101,11 @@ env vars) applies to any Docker host.
 
 ## Local development (no printer required)
 
+The web UI is a React app that has to be built before the server can serve
+it. Docker does this for you; running from source needs both halves:
+
 ```sh
+# backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # PRINTER_BACKEND=dummy by default — no hardware needed
@@ -109,15 +113,24 @@ set -a; source .env; set +a
 uvicorn app.main:app --reload
 ```
 
+```sh
+# frontend, in a second shell (Node 20+)
+cd frontend && npm install
+npm run dev            # rebuilds into app/static/dist on every change
+```
+
 Visit http://127.0.0.1:8000. With `PRINTER_BACKEND=dummy`, "prints" are
 captured in memory instead of sent to hardware, so you can exercise the full
 UI/API without the printer attached.
+
+If the page loads blank, the frontend hasn't been built yet — run
+`npm run build` in `frontend/` once.
 
 ## Environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DEFAULT_LANGUAGE` | `nl` | UI language (`nl` or `en`) shown before a visitor picks one via the footer switcher (which then sets a cookie, overriding this). |
+| `DEFAULT_LANGUAGE` | `en` | UI language (`en` or `nl`) shown before a visitor picks one via the footer switcher (which then sets a cookie, overriding this). |
 | `AUTH_ENABLED` | `true` | Gate the web UI behind a shared password. Set `false` if you're relying on a reverse proxy / access policy (e.g. Cloudflare Access) in front of the app instead. |
 | `APP_PASSWORD` | _(empty)_ | The shared password, used when `AUTH_ENABLED=true`. |
 | `SESSION_SECRET` | random per-process | Signs session cookies. Set a fixed value in production or everyone gets logged out on every restart. |
@@ -227,11 +240,15 @@ All endpoints below require either a logged-in browser session or, if
 | `DELETE /queue/{id}` | — | Cancel a job that hasn't started yet. |
 | `GET /queue/current` | — | What's printing right now, if anything. |
 | `POST /queue/cancel-current` | — | Abort whatever's currently printing (works mid-transfer on a big job). |
+| `GET /api/settings` | — | Current header/footer/logo/text-style settings. |
+| `POST /api/settings` | multipart `header_text`, `footer_text`, `default_align`, `default_bold`, `default_double_width`, `remove_logo`, `logo` | Replace the printer settings. Sends every field — omitted fields reset to their default. |
 
 `/print/*` and `/snippets/{id}/print` also accept `queue` (bool), `run_at`
 (ISO datetime), `recurrence` (`daily`\|`weekly`\|`monthly`), and
 `recurrence_time` (`HH:MM`) — set any of these instead of printing
-immediately to queue/schedule/repeat the job.
+immediately to queue/schedule/repeat the job. `run_at` is interpreted as
+**naive local time** in the server's `TZ`, with no timezone conversion, and
+`recurrence_time` is required whenever `recurrence` is set.
 
 ### Home Assistant
 

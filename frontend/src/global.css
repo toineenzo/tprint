@@ -1,0 +1,76 @@
+/* Everything visual lives in theme.ts. This file only covers what a theme
+   object cannot reach: the document element itself. */
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-8)
+  );
+}
+
+/* Wide content (PDF previews, long queue labels) scrolls inside its own
+   container rather than making the page scroll sideways. */
+body {
+  overflow-x: hidden;
+}
+
+/* The active tab is a *tinted* primary pill, not a filled one. A solid primary
+   block here would put the tab bar in direct competition with the card's one
+   real call to action (Print) — which is exactly the problem the old single
+   accent colour had. */
+.print-tab[data-active] {
+  background-color: var(--mantine-primary-color-light);
+  color: var(--mantine-primary-color-light-color);
+  border: 1px solid var(--mantine-primary-color-light-hover);
+}
+
+/* An inactive pill tab gets a resting surface and border, so Image/PDF/Tasks/
+   Calendar still read as tabs. Mantine's pills variant styles only the active
+   tab by default, which is what made the old bar look like plain text. */
+.print-tab:not([data-active]) {
+  background-color: light-dark(
+    var(--mantine-color-gray-1),
+    var(--mantine-color-dark-6)
+  );
+  border: 1px solid
+    light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+}
+
+.print-tab:not([data-active]):hover {
+  background-color: light-dark(
+    var(--mantine-color-gray-2),
+    var(--mantine-color-dark-5)
+  );
+}
+
+/* Main column + history sidebar. Collapses to a single column on narrow
+   screens, where the sidebar also stops being sticky. */
+.layout-with-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  gap: var(--mantine-spacing-md);
+  align-items: start;
+}
+
+.layout-aside {
+  position: sticky;
+  top: var(--mantine-spacing-md);
+  max-height: calc(100vh - 2 * var(--mantine-spacing-md));
+  overflow-y: auto;
+}
+
+@media (max-width: 62em) {
+  .layout-with-aside {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .layout-aside {
+    position: static;
+    max-height: none;
+  }
+}
