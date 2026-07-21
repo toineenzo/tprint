@@ -81,17 +81,51 @@ see **Supported printers** above.
 
 ## Quickstart (Docker)
 
+Prebuilt images are published to GHCR for **linux/amd64 and linux/arm64**, so
+this runs on an x86 box, a Raspberry Pi, or an ARM server without building
+anything. Docker picks the right architecture automatically.
+
 ```sh
 git clone https://github.com/toineenzo/tprint.git
 cd tprint
 cp .env.example .env   # edit: at minimum set APP_PASSWORD, SESSION_SECRET, PRINT_API_TOKEN
-docker compose up -d --build
+docker compose up -d
 ```
+
+The compose file pulls `ghcr.io/toineenzo/tprint:latest`. To build from source
+instead, comment out the `image:`/`pull_policy:` lines in `docker-compose.yml`
+and uncomment `build: .` — that needs Node and a few minutes, and is only
+worth it if you're changing the code.
+
+Don't want the repo at all? The image is public and self-contained:
+
+```sh
+docker run -d --name tprint \
+  -p 8000:8000 \
+  -e AUTH_ENABLED=false \
+  -e PRINTER_BACKEND=dummy \
+  -v tprint-data:/data \
+  ghcr.io/toineenzo/tprint:latest
+```
+
+Swap in `-e PRINTER_BACKEND=file --device /dev/usb/lp0:/dev/usb/lp0` once a
+printer is attached, and set `AUTH_ENABLED=true` with `APP_PASSWORD` and
+`SESSION_SECRET` if it's reachable by anyone but you.
 
 This starts the app on `http://localhost:8000` (or `$HOST_PORT` if you set
 one), with the printer device from `PRINTER_DEVICE` (default
 `/dev/usb/lp0`) mapped into the container. Set `PRINTER_BACKEND=dummy` in
 `.env` first if you want to try the UI without a printer attached.
+
+### Pinning and rolling back
+
+`latest` follows the newest push to `main`. To pin a specific build, set
+`TPRINT_TAG` to one of the `sha-xxxxxxx` tags listed on the
+[package page](https://github.com/toineenzo/tprint/pkgs/container/tprint):
+
+```sh
+TPRINT_TAG=sha-4cb2ab1 docker compose up -d
+```
 
 For a full guided deployment onto Proxmox + Portainer specifically
 (passing the USB printer through to a container, exposing it via a reverse

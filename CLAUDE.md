@@ -244,6 +244,28 @@ before considering the change finished — a dependency or Dockerfile typo won't
 show up in a local venv/`npm run dev` test, and the image now has two build
 stages that can fail independently.
 
+## Releasing
+
+`.github/workflows/publish.yml` builds **linux/amd64 and linux/arm64** and
+pushes `ghcr.io/toineenzo/tprint` on every push to `main`, tagged `latest` and
+`sha-<short>`. `docker-compose.yml` pulls that image rather than building, so
+deployment hosts (and anyone running this on a Pi) never compile anything.
+
+Consequences worth knowing before changing any of it:
+
+- **`pull_policy: always` is load-bearing.** `latest` is a moving tag; without
+  it a host keeps running whatever it pulled first and a redeploy silently
+  does nothing.
+- **Each architecture builds on a runner of its own architecture**, pushes by
+  digest, and a merge job assembles the multi-platform tag — so a tag never
+  points at a single-arch image. Don't "simplify" this to one QEMU-emulated
+  job: emulating the npm/Vite stage is roughly an order of magnitude slower.
+- **Rollback is `TPRINT_TAG=sha-xxxxxxx`**, not a rebuild.
+- The GHCR package must stay **public**, or every puller needs credentials.
+
+Anything that changes what the image contains still needs the local
+`docker build` + smoke test above — CI proves it builds, not that it works.
+
 ## Coding conventions
 
 - No comments except where the *why* is genuinely non-obvious (see
