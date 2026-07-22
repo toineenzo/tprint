@@ -51,23 +51,93 @@ def enqueue(
     run_at: str | None = None,
     recurrence: str | None = None,
     recurrence_time: str | None = None,
+    recurrence_days: list[int] | None = None,
 ) -> int:
     run_at = _normalize_run_at(run_at)
-    if recurrence and not run_at:
-        # No explicit start time for a recurring job — anchor it to the next
-        # occurrence of recurrence_time rather than running immediately.
-        run_at = _next_occurrence(recurrence, recurrence_time, datetime.now()).isoformat(
-            timespec="seconds"
-        )
+    days = parse_days(recurrence_days)
+
+    if recurrence:
+        # A caller that sends `recurrence=weekly` with no days — the documented
+        # API before weekday rules existed — gets them derived from the anchor.
+        # That's what the old arithmetic did implicitly ("+7 days" is the same
+        # weekday), so the contract is unchanged and there is one rule format
+        # in the database rather than a legacy shape the worker must special-case.
+        if not days:
+            anchor = datetime.fromisoformat(run_at) if run_at else datetime.now()
+            if recurrence == "weekly":
+                days = [anchor.isoweekday()]
+            elif recurrence == "monthly":
+                days = [anchor.day]
+        if not run_at:
+            # No explicit start time — anchor to the next matching occurrence
+            # rather than running immediately.
+            run_at = _next_occurrence(
+                recurrence, days, recurrence_time, datetime.now()
+            ).isoformat(timespec="seconds")
+
     with db.get_conn() as conn:
         cur = conn.execute(
             """
-            INSERT INTO print_jobs (kind, payload, label, run_at, recurrence, recurrence_time)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO print_jobs
+                (kind, payload, label, run_at, recurrence, recurrence_time, recurrence_days)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (kind, json.dumps(payload), label[:200], run_at, recurrence, recurrence_time),
+            (
+                kind,
+                json.dumps(payload),
+                label[:200],
+                run_at,
+                recurrence,
+                recurrence_time,
+                json.dumps(days) if days else None,
+            ),
         )
         return cur.lastrowid
+
+
+def prune_finished_jobs() -> None:
+    """Apply the retention settings to jobs that have already run.
+
+    Only done/failed/canceled jobs are ever considered. A pending or scheduled
+    job is *upcoming work* — dropping one because the list grew long would be
+    data loss dressed up as cleanup, so retention never touches them however
+    old they are.
+    """
+    from app import settings as settings_store
+
+    current = settings_store.get_settings()
+    max_items = int(current["retention_max_items"])
+    max_age_days = int(current["retention_max_age_days"])
+
+    finished = "status IN ('done', 'failed', 'canceled')"
+    conditions, params = [], []
+    if max_items > 0:
+        conditions.append(
+            f"id NOT IN (SELECT id FROM print_jobs WHERE {finished} "
+            "ORDER BY created_at DESC, id DESC LIMIT ?)"
+        )
+        params.append(max_items)
+    if max_age_days > 0:
+        conditions.append("created_at < datetime('now', ?)")
+        params.append(f"-{max_age_days} days")
+    if not conditions:
+        return
+
+    where = f"{finished} AND ({' OR '.join(conditions)})"
+    with db.get_conn() as conn:
+        for row in conn.execute(f"SELECT payload FROM print_jobs WHERE {where}", params):
+            _cleanup_payload_files(json.loads(row["payload"]))
+        conn.execute(f"DELETE FROM print_jobs WHERE {where}", params)
+
+
+def is_scheduled(run_at: str | None, recurrence: str | None) -> bool:
+    """Whether a job belongs to the Scheduled section rather than the manual queue.
+
+    Computed here and sent to clients rather than re-derived in the UI, so the
+    frontend's two lists and `run_manual_queue`'s WHERE clause can't disagree
+    about which jobs "Run queue" is going to touch.
+    """
+    return bool(run_at or recurrence)
 
 
 def list_jobs() -> list[dict]:
@@ -75,12 +145,19 @@ def list_jobs() -> list[dict]:
         rows = conn.execute(
             """
             SELECT id, kind, label, status, run_at, recurrence, recurrence_time,
-                   last_run_at, error, created_at
+                   recurrence_days, last_run_at, error, created_at
             FROM print_jobs
             ORDER BY (status = 'pending') DESC, COALESCE(run_at, created_at) ASC, id ASC
             """
         ).fetchall()
-        return [dict(row) for row in rows]
+
+    jobs = []
+    for row in rows:
+        job = dict(row)
+        job["recurrence_days"] = parse_days(job["recurrence_days"]) or None
+        job["scheduled"] = is_scheduled(job["run_at"], job["recurrence"])
+        jobs.append(job)
+    return jobs
 
 
 def cancel_job(job_id: int) -> bool:
@@ -101,13 +178,24 @@ def cancel_job(job_id: int) -> bool:
 def _cleanup_payload_files(payload: dict) -> None:
     if payload.get("file"):
         _delete_upload(payload["file"])
+    # A composition carries a list rather than a single upload.
+    for name in payload.get("files") or []:
+        _delete_upload(name)
 
 
 def run_manual_queue() -> int:
-    """Run every pending job that has no scheduled time (pure manual queue)."""
+    """Run every pending job in the manual queue, and nothing else.
+
+    Scheduled jobs are excluded on purpose — they fire on their own trigger in
+    `worker_loop`, and "Run queue" must never pull a future print forward. The
+    `recurrence IS NULL` half is belt-and-braces: `enqueue` always anchors a
+    recurring job's `run_at`, so the first condition already excludes it, but
+    that invariant lives in another function and this is the destructive one.
+    """
     with db.get_conn() as conn:
         rows = conn.execute(
-            "SELECT id FROM print_jobs WHERE status = 'pending' AND run_at IS NULL"
+            "SELECT id FROM print_jobs "
+            "WHERE status = 'pending' AND run_at IS NULL AND recurrence IS NULL"
         ).fetchall()
     for row in rows:
         _run_job(row["id"])
@@ -138,28 +226,72 @@ def _parse_time(recurrence_time: str | None) -> tuple[int, int]:
         return _parse_time(DEFAULT_RECURRENCE_TIME)
 
 
-def _next_occurrence(recurrence: str, recurrence_time: str | None, after: datetime) -> datetime:
-    # Without this guard an unrecognized recurrence fell through every branch
-    # below and returned a time in the *past*, leaving the job pending and due
-    # — so the worker reprinted it every POLL_SECONDS, forever.
+def parse_days(raw) -> list[int]:
+    """The stored `recurrence_days` JSON as a sorted list of ints.
+
+    Tolerant for the same reason `_parse_time` is: the worker reads rows that
+    predate the current validation, and one bad row must not stop the queue.
+    """
+    if not raw:
+        return []
+    values = raw if isinstance(raw, list) else json.loads(raw)
+    try:
+        return sorted({int(value) for value in values})
+    except (TypeError, ValueError):
+        return []
+
+
+def _next_occurrence(
+    recurrence: str,
+    recurrence_days: list[int] | str | None,
+    recurrence_time: str | None,
+    after: datetime,
+) -> datetime:
+    """The first moment strictly after `after` that matches the rule.
+
+    Every branch must return a time in the *future*. An unrecognized recurrence
+    used to fall through and return a time in the past, leaving the job pending
+    and due — so the worker reprinted it every POLL_SECONDS, forever. Any rule
+    that can't produce a future time raises instead, and `_run_job` marks the
+    job failed rather than leaving it in that loop.
+    """
     if recurrence not in RECURRENCES:
         raise ValueError(f"unknown recurrence: {recurrence!r}")
 
     hour, minute = _parse_time(recurrence_time)
-    candidate = after.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if candidate <= after:
-        if recurrence == "daily":
-            candidate += timedelta(days=1)
-        elif recurrence == "weekly":
-            candidate += timedelta(weeks=1)
-        elif recurrence == "monthly":
-            month = candidate.month + 1
-            year = candidate.year
-            if month > 12:
-                month = 1
-                year += 1
-            candidate = candidate.replace(year=year, month=month)
-    return candidate
+    days = parse_days(recurrence_days)
+    at_time = after.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+    if recurrence == "daily":
+        return at_time if at_time > after else at_time + timedelta(days=1)
+
+    if recurrence == "weekly":
+        if not days:
+            raise ValueError("weekly recurrence needs at least one weekday")
+        # At most 7 hops: whichever selected weekday comes round first.
+        for offset in range(8):
+            candidate = at_time + timedelta(days=offset)
+            if candidate > after and candidate.isoweekday() in days:
+                return candidate
+        raise ValueError(f"no weekday in {days} within a week")
+
+    if not days:
+        raise ValueError("monthly recurrence needs at least one day of month")
+    # Walk forward month by month. A day the month doesn't have (the 31st of
+    # February) is skipped rather than clamped: "the 31st" means the 31st, and
+    # silently printing on the 28th instead is a worse answer than waiting.
+    # 63 months is a generous bound — even a 31st-only rule never waits a year.
+    year, month = after.year, after.month
+    for _ in range(63):
+        for day in days:
+            try:
+                candidate = datetime(year, month, day, hour, minute)
+            except ValueError:
+                continue
+            if candidate > after:
+                return candidate
+        month, year = (1, year + 1) if month == 12 else (month + 1, year)
+    raise ValueError(f"no valid date for days {days} within 63 months")
 
 
 def _run_job(job_id: int) -> None:
@@ -196,7 +328,10 @@ def _run_job(job_id: int) -> None:
         elif job["recurrence"]:
             try:
                 next_run = _next_occurrence(
-                    job["recurrence"], job["recurrence_time"], datetime.now()
+                    job["recurrence"],
+                    job["recurrence_days"],
+                    job["recurrence_time"],
+                    datetime.now(),
                 )
             except ValueError as exc:
                 # A job we can't reschedule is marked failed rather than left
@@ -231,6 +366,16 @@ def _execute(kind: str, payload: dict) -> None:
         actions.print_random(payload.get("kind"), payload.get("lang", "en"))
     elif kind == "checklist":
         actions.print_checklist(payload.get("title"), payload["items"], payload["mode"], payload.get("lang", "en"))
+    elif kind == "composition":
+        images = {
+            index: printer.image_from_upload(_read_upload(name))
+            for index, name in enumerate(payload.get("files") or [])
+        }
+        actions.print_composition(payload["parts"], images)
+    elif kind == "code":
+        actions.print_code(payload["data"], payload["format"], payload["symbology"])
+    elif kind == "richtext":
+        actions.print_richtext(payload["blocks"])
     elif kind == "image":
         image = printer.image_from_upload(_read_upload(payload["file"]))
         actions.print_image(image)
@@ -238,7 +383,12 @@ def _execute(kind: str, payload: dict) -> None:
         actions.print_pdf(_read_upload(payload["file"]))
     elif kind == "ics":
         events = ics_import.parse_ics(_read_upload(payload["file"]))
-        actions.print_ics(events, payload["mode"])
+        actions.print_ics(
+            events,
+            payload["mode"],
+            payload.get("overview", "none"),
+            payload.get("orientation", "vertical"),
+        )
     elif kind == "snippet":
         actions.print_snippet(payload["snippet_id"], payload.get("lang", "en"))
     else:
@@ -250,6 +400,10 @@ async def worker_loop() -> None:
         try:
             for job_id in _due_job_ids():
                 await asyncio.to_thread(_run_job, job_id)
+            # Retention runs on the same tick rather than on a timer of its
+            # own: it's cheap, and it means finished jobs are tidied whether
+            # or not anyone has the page open.
+            await asyncio.to_thread(prune_finished_jobs)
         except Exception:
             logger.exception("queue worker tick failed")
         await asyncio.sleep(POLL_SECONDS)

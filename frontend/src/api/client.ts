@@ -50,8 +50,25 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  putJson: <T>(url: string, body: unknown) =>
+    request<T>(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
   postForm: <T>(url: string, body: FormData) =>
     request<T>(url, { method: "POST", body }),
+
+  /** For endpoints that answer with an image rather than JSON (previews). */
+  postFormBlob: async (url: string, body: FormData): Promise<Blob> => {
+    const res = await fetch(url, { method: "POST", body });
+    if (!res.ok) {
+      const parsed = await res.json().catch(() => null);
+      throw new ApiError(errorMessage(parsed, res.status), res.status);
+    }
+    return res.blob();
+  },
 
   putForm: <T>(url: string, body: FormData) =>
     request<T>(url, { method: "PUT", body }),
@@ -72,6 +89,7 @@ export function appendQueueOptions(
     run_at?: string | null;
     recurrence?: string | null;
     recurrence_time?: string | null;
+    recurrence_days?: number[] | null;
   },
 ): FormData {
   form.set("queue", "true");
@@ -79,6 +97,9 @@ export function appendQueueOptions(
   if (options.recurrence) {
     form.set("recurrence", options.recurrence);
     form.set("recurrence_time", options.recurrence_time || "08:00");
+    if (options.recurrence_days?.length) {
+      form.set("recurrence_days", options.recurrence_days.join(","));
+    }
   }
   return form;
 }

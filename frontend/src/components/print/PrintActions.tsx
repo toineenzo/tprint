@@ -22,6 +22,7 @@ export function PrintActions({
   onSaveAsSnippetChange,
   busy,
   disabled,
+  queueDisabled,
 }: {
   printLabelKey: StringKey;
   onPrint: () => void;
@@ -30,6 +31,8 @@ export function PrintActions({
   onSaveAsSnippetChange: (checked: boolean) => void;
   busy: boolean;
   disabled?: boolean;
+  /** Set when the schedule is half-filled — Print stays available, Queue can't. */
+  queueDisabled?: boolean;
 }) {
   const t = useStrings();
 
@@ -49,7 +52,7 @@ export function PrintActions({
         <SecondaryButton
           type="button"
           onClick={onQueue}
-          disabled={busy || disabled}
+          disabled={busy || disabled || queueDisabled}
           icon={<IconPlaylistAdd size={ICON_SIZE.md} stroke={ICON_STROKE} />}
         >
           {t("queue_btn")}
