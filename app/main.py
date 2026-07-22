@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import config, db, print_queue
 from app.routers import (
+    content as content_router,
     history as history_router,
     pages,
     print as print_router,
@@ -51,6 +52,7 @@ app.include_router(snippets.router)
 app.include_router(settings_router.router)
 app.include_router(history_router.router)
 app.include_router(queue_router.router)
+app.include_router(content_router.router)
 
 
 @app.get("/health")
