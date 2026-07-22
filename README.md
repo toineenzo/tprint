@@ -267,6 +267,14 @@ keep the data, copy your `DATA_DIR` volume before pressing it.
 All endpoints below require either a logged-in browser session or, if
 `PRINT_API_TOKEN` is set, an `Authorization: Bearer <token>` header.
 
+**One exception:** `POST /api/settings/reset` accepts a browser session only,
+never the bearer token. The token exists so automations can *print*; being able
+to print shouldn't also mean being able to wipe the database, so a token that
+leaks out of an n8n or Home Assistant config costs you paper rather than your
+snippets and history. (In a deployment with `AUTH_ENABLED=false` there are no
+sessions at all, so reset falls back to the same network-level trust as
+everything else.)
+
 | Method & path | Body | Purpose |
 |---|---|---|
 | `POST /print/text` | `{"text": "..."}` | Print plain text. |
@@ -290,7 +298,7 @@ All endpoints below require either a logged-in browser session or, if
 | `POST /queue/cancel-current` | — | Abort whatever's currently printing (works mid-transfer on a big job). |
 | `GET /api/settings` | — | Current header/footer/logo/text-style settings. |
 | `POST /api/settings` | multipart `header_text`, `footer_text`, `default_align`, `default_bold`, `default_double_width`, `remove_logo`, `logo` | Replace the printer settings. Sends every field — omitted fields reset to their default. |
-| `POST /api/settings/reset` | — | **Destructive, no undo.** Deletes every snippet, all history, the queue and the printer settings, returning the app to a fresh install. |
+| `POST /api/settings/reset` | — | **Destructive, no undo.** Deletes every snippet, all history, the queue and the printer settings, returning the app to a fresh install. Requires a browser session — see the note below. |
 
 `/print/*` and `/snippets/{id}/print` also accept `queue` (bool), `run_at`
 (ISO datetime), `recurrence` (`daily`\|`weekly`\|`monthly`), and

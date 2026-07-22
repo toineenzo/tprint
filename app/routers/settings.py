@@ -57,11 +57,14 @@ async def save_settings(
 
 
 @router.post("/reset")
-def reset_data(_: None = Depends(auth.require_api_auth)):
+def reset_data(_: None = Depends(auth.require_session_auth)):
     """Wipe every snippet, history entry, queued job and printer setting.
 
     There is no undo and nothing is backed up first — the UI gates this behind a
     confirmation modal, and that is the only safeguard by design.
+
+    Note the dependency: require_session_auth, not require_api_auth. This is the
+    one endpoint a PRINT_API_TOKEN may not reach.
     """
     db.reset_all()
     return settings_store.public_settings()

@@ -333,6 +333,13 @@ Anything that changes what the image contains still needs the local
   `auth.web_page_authed(request)` + redirect pattern is **only** for HTML page
   routes (GET `/`, `/settings`, `/login` in `routers/pages.py`); using it on a
   data endpoint hands an XHR caller a 200 with a login page in the body.
+- **`auth.require_session_auth` is the stricter variant**, and `POST
+  /api/settings/reset` is currently its only user. It refuses `PRINT_API_TOKEN`
+  on purpose: that token is handed to n8n/Home Assistant so they can print, and
+  printing must not imply the ability to destroy data. Use it for any future
+  action that is destructive and has no machine-caller use case — but keep its
+  `AUTH_ENABLED=false` fallback in mind, since deployments gated at the
+  reverse proxy have no session to present.
 - Anything an HTTP response exposes goes through a "public" projection —
   `settings.public_settings()`, `history.list_recent_public()` — so internal
   on-disk paths and SQLite's 0/1 booleans stay out of the API.
