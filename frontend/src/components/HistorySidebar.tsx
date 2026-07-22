@@ -2,6 +2,7 @@ import { Card, Group, Image, Stack, Text, ThemeIcon, Title } from "@mantine/core
 import { IconHistory } from "@tabler/icons-react";
 
 import { useStrings } from "../AppContext";
+import { registerFlightTarget } from "../flight";
 import { useAppData } from "../AppData";
 import type { HistoryEntry } from "../api/types";
 import { contentType } from "../constants/contentTypes";
@@ -61,7 +62,10 @@ export function HistorySidebar() {
   const { history } = useAppData();
 
   return (
-    <Card component="aside">
+    <Card
+      component="aside"
+      ref={(element: HTMLElement | null) => registerFlightTarget("history", element)}
+    >
       <Group gap="xs" align="center" mb="md" wrap="nowrap">
         <IconHistory size={ICON_SIZE.lg} stroke={ICON_STROKE} />
         <Title order={2}>{t("history_title")}</Title>
