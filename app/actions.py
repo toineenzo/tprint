@@ -1,6 +1,6 @@
 from PIL import Image
 
-from app import content, history, ics_import, printer
+from app import content, history, ics_import, printer, richtext
 from app import snippets as snippets_store
 
 
@@ -19,8 +19,35 @@ def print_pdf(pdf_bytes: bytes) -> None:
     history.add_entry("pdf", preview_image=images[0] if images else None)
 
 
-def print_random(kind: str | None, lang: str) -> None:
-    text = content.random_surprise(kind, lang)
+def print_code(data: str, code_format: str, symbology: str) -> None:
+    printer.print_code(data, code_format, symbology)
+    history.add_entry("code", preview_text=f"{code_format}: {data}")
+
+
+def print_richtext(blocks: list[dict]) -> None:
+    printer.print_richtext(blocks)
+    history.add_entry("richtext", preview_text=richtext.plain_text(blocks))
+
+
+def print_composition(parts: list[dict], images: dict) -> None:
+    printer.print_composition(parts, images)
+    summary = " / ".join(
+        richtext.plain_text(part.get("blocks") or []) if part.get("type") == "text"
+        else part.get("type", "?")
+        for part in parts
+    )
+    history.add_entry("composition", preview_text=summary[:300])
+
+
+def print_random(
+    kind: str | None,
+    lang: str,
+    text: str | None = None,
+    category: str | None = None,
+) -> None:
+    """Print a surprise. `text` is the already-drawn item from a preview — the
+    user approved *that* one, so re-rolling here would print something else."""
+    text = text or content.random_surprise(kind, lang, category)
     printer.print_text(text)
     history.add_entry("random", preview_text=text)
 
@@ -46,8 +73,13 @@ def _ics_preview(events: list[dict], mode: str) -> str:
     return "\n".join(lines)
 
 
-def print_ics(events: list[dict], mode: str) -> None:
-    printer.print_ics_events(events, mode)
+def print_ics(
+    events: list[dict],
+    mode: str,
+    overview: str = "none",
+    orientation: str = "vertical",
+) -> None:
+    printer.print_ics_events(events, mode, overview, orientation)
     history.add_entry("ics", preview_text=_ics_preview(events, mode))
 
 
@@ -55,6 +87,19 @@ def print_snippet(snippet_id: int, lang: str = "en") -> None:
     snippet = snippets_store.get_snippet(snippet_id)
     if not snippet:
         raise ValueError("snippet not found")
+
+    if snippet["kind"] == "composition":
+        payload = snippet["payload"] or {}
+        paths = [snippets_store.file_path(name) for name in snippet["files"]]
+        images = {index: Image.open(path) for index, path in enumerate(paths)}
+        parts = payload.get("parts") or []
+        printer.print_composition(parts, images)
+        history.add_entry(
+            "snippet",
+            preview_text=snippet["name"],
+            preview_image=images.get(0) if images else None,
+        )
+        return
 
     if snippet["kind"] == "checklist":
         payload = snippet["payload"] or {}
@@ -68,7 +113,12 @@ def print_snippet(snippet_id: int, lang: str = "en") -> None:
         payload = snippet["payload"] or {}
         with open(snippets_store.file_path(snippet["files"][0]), "rb") as f:
             events = ics_import.parse_ics(f.read())
-        printer.print_ics_events(events, payload.get("mode", "single"))
+        printer.print_ics_events(
+            events,
+            payload.get("mode", "single"),
+            payload.get("overview", "none"),
+            payload.get("orientation", "vertical"),
+        )
         history.add_entry("snippet", preview_text=snippet["name"])
         return
 

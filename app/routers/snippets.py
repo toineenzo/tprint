@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Optional
 
@@ -7,12 +8,7 @@ from pydantic import ValidationError
 
 from app import actions, auth, i18n, print_queue
 from app import snippets as snippets_store
-from app.schemas import (
-    ChecklistPrintRequest,
-    PrintMode,
-    QueueOptions,
-    queue_options_query,
-)
+from app.schemas import ChecklistPrintRequest, QueueOptions, queue_options_query
 
 router = APIRouter(prefix="/snippets", tags=["snippets"])
 
@@ -36,7 +32,9 @@ async def create_snippet(
     kind: str = Form(...),
     text_content: Optional[str] = Form(None),
     payload: Optional[str] = Form(None),
-    mode: PrintMode = Form("single"),
+    mode: str = Form("single"),
+    overview: str = Form("none"),
+    orientation: str = Form("vertical"),
     files: list[UploadFile] = File(default=[]),
     _: None = Depends(auth.require_api_auth),
 ):
@@ -72,15 +70,28 @@ async def create_snippet(
         snippet_id = snippets_store.create_checklist_snippet(
             name, parsed.title, items, parsed.mode
         )
+    elif kind == "composition":
+        try:
+            parsed = json.loads(payload or "")
+        except ValueError as exc:
+            raise HTTPException(400, f"invalid composition payload: {exc}") from exc
+        if not parsed.get("parts"):
+            raise HTTPException(400, "a composition needs at least one part")
+        uploads = [f for f in files if f.filename]
+        loaded = [(await f.read(), f.filename) for f in uploads]
+        snippet_id = snippets_store.create_composition_snippet(name, parsed, loaded)
     elif kind == "ics":
         uploads = [f for f in files if f.filename]
         if not uploads:
             raise HTTPException(400, "a file is required for ics snippets")
         data = await uploads[0].read()
-        snippet_id = snippets_store.create_ics_snippet(name, data, uploads[0].filename, mode)
+        snippet_id = snippets_store.create_ics_snippet(
+            name, data, uploads[0].filename, mode, overview, orientation
+        )
     else:
         raise HTTPException(
-            400, "kind must be 'text', 'image', 'pdf', 'checklist', or 'ics'"
+            400,
+            "kind must be 'text', 'image', 'pdf', 'checklist', 'ics', or 'composition'",
         )
     return {"id": snippet_id}
 
@@ -166,6 +177,7 @@ def print_snippet(
             run_at=options.run_at,
             recurrence=options.recurrence,
             recurrence_time=options.recurrence_time,
+            recurrence_days=options.recurrence_days,
         )
         return {"status": "queued", "job_id": job_id}
 

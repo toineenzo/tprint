@@ -10,7 +10,7 @@ ALLOWED_ICS_EXTS = ("ics",)
 
 # Kinds whose content is structured data rather than something the edit form can
 # meaningfully show as text or files — these are rename-only once saved.
-STRUCTURED_KINDS = ("checklist", "ics")
+STRUCTURED_KINDS = ("checklist", "ics", "composition")
 
 
 def _parse_row(row) -> dict:
@@ -103,17 +103,49 @@ def create_checklist_snippet(name: str, title: str | None, items: list[dict], mo
         return cur.lastrowid
 
 
-def create_ics_snippet(name: str, data: bytes, filename: str, mode: str) -> int:
+def create_ics_snippet(
+    name: str,
+    data: bytes,
+    filename: str,
+    mode: str,
+    overview: str = "none",
+    orientation: str = "vertical",
+) -> int:
     """Store the original .ics file, not the events parsed out of it.
 
     Re-parsing on print keeps a saved agenda faithful to the uploaded calendar
-    rather than freezing one rendering of it.
+    rather than freezing one rendering of it. The presentation options travel
+    with it so a saved agenda reprints the way it was set up; snippets written
+    before they existed simply have no keys and fall back to the defaults.
     """
     saved = _save_file(data, filename, ALLOWED_ICS_EXTS)
     with db.get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO snippets (name, kind, file_paths, payload) VALUES (?, 'ics', ?, ?)",
-            (name, json.dumps([saved]), json.dumps({"mode": mode})),
+            (
+                name,
+                json.dumps([saved]),
+                json.dumps({"mode": mode, "overview": overview, "orientation": orientation}),
+            ),
+        )
+        return cur.lastrowid
+
+
+def create_composition_snippet(
+    name: str, payload: dict, files: list[tuple[bytes, str]]
+) -> int:
+    """Save a composition as a reusable template.
+
+    `payload` carries both what to print (`parts`, or a flattened image for
+    canvas mode) and the editor's own `layout`, so the template can be reopened
+    and edited rather than only reprinted.
+    """
+    saved = [_save_file(data, filename, ALLOWED_IMAGE_EXTS) for data, filename in files]
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO snippets (name, kind, file_paths, payload)"
+            " VALUES (?, 'composition', ?, ?)",
+            (name, json.dumps(saved), json.dumps(payload)),
         )
         return cur.lastrowid
 
