@@ -5,26 +5,34 @@ import { useStrings } from "../../AppContext";
 import { api } from "../../api/client";
 import type { PrintResponse } from "../../api/types";
 import { usePrint } from "../../hooks/usePrint";
-import { useQuickSave } from "../../hooks/useQuickSave";
-import { NamePromptModal } from "../ui/PromptModals";
+import { deriveName, useSaveAsSnippet } from "../../hooks/useSaveAsSnippet";
 import { PrintActions } from "./PrintActions";
 import { QueueOptionsFields, useQueueOptions } from "./QueueOptionsFields";
 
 export function TextTab() {
   const t = useStrings();
   const [text, setText] = useState("");
-  const [namePromptOpen, setNamePromptOpen] = useState(false);
+  const [saveAsSnippet, setSaveAsSnippet] = useState(false);
   const options = useQueueOptions();
   const { print, busy } = usePrint();
-  const { quickSave } = useQuickSave();
+  const saveSnippet = useSaveAsSnippet();
 
   const empty = !text.trim();
 
   const send = async (queue: boolean) => {
     const body = queue ? { text, ...options.toPayload() } : { text };
-    const ok = await print(() => api.postJson<PrintResponse>("/print/text", body));
+    const ok = await print(async () => {
+      if (saveAsSnippet) {
+        await saveSnippet(deriveName(text, t("kind_text")), (form) => {
+          form.set("kind", "text");
+          form.set("text_content", text.trim());
+        });
+      }
+      return api.postJson<PrintResponse>("/print/text", body);
+    });
     if (ok) {
       setText("");
+      setSaveAsSnippet(false);
       options.reset();
     }
   };
@@ -48,21 +56,8 @@ export function TextTab() {
         disabled={empty}
         onPrint={() => send(false)}
         onQueue={() => send(true)}
-        onQuickSave={() => setNamePromptOpen(true)}
-      />
-
-      <NamePromptModal
-        opened={namePromptOpen}
-        title={t("quick_save_hint")}
-        onClose={() => setNamePromptOpen(false)}
-        onSubmit={async (name) => {
-          setNamePromptOpen(false);
-          await quickSave(name, (form) => {
-            form.set("kind", "text");
-            form.set("text_content", text.trim());
-          });
-          setText("");
-        }}
+        saveAsSnippet={saveAsSnippet}
+        onSaveAsSnippetChange={setSaveAsSnippet}
       />
     </Stack>
   );

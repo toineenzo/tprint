@@ -66,6 +66,16 @@ export const theme: MantineThemeOverride = createTheme({
     Textarea: { defaultProps: { radius: "md" } },
     Select: { defaultProps: { radius: "md" } },
     FileInput: { defaultProps: { radius: "md" } },
-    Modal: { defaultProps: { radius: "lg", centered: true } },
+    // closeOnEscape is Mantine's default, but it's stated here because it's a
+    // guarantee the app makes about every modal — including the settings one,
+    // which replaced a real page and would otherwise feel like a dead end.
+    Modal: {
+      defaultProps: {
+        radius: "lg",
+        centered: true,
+        closeOnEscape: true,
+        withCloseButton: true,
+      },
+    },
   },
 });

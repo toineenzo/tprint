@@ -1,4 +1,14 @@
-export type SnippetKind = "text" | "image" | "pdf";
+export type SnippetKind = "text" | "image" | "pdf" | "checklist" | "ics";
+
+/** What a saved checklist stores — enough to reprint it exactly. */
+export type ChecklistPayload = {
+  title: string | null;
+  items: { text: string; due: string | null }[];
+  mode: PrintMode;
+};
+
+/** A saved agenda keeps the original .ics file; only the mode is payload. */
+export type IcsPayload = { mode: PrintMode };
 
 export type Snippet = {
   id: number;
@@ -6,6 +16,8 @@ export type Snippet = {
   kind: SnippetKind;
   text_content: string | null;
   files: string[];
+  /** Set for the `checklist` and `ics` kinds only; null for the rest. */
+  payload: ChecklistPayload | IcsPayload | null;
   created_at: string;
   updated_at: string;
 };

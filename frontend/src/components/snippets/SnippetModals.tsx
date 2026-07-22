@@ -17,7 +17,7 @@ import { useEffect, useState } from "react";
 import { useStrings } from "../../AppContext";
 import { useAppData } from "../../AppData";
 import { api } from "../../api/client";
-import type { Snippet } from "../../api/types";
+import type { ChecklistPayload, IcsPayload, Snippet } from "../../api/types";
 import { useSubmit } from "../../hooks/useSubmit";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
 import { PrimaryButton, SecondaryButton } from "../ui/Buttons";
@@ -31,6 +31,7 @@ export function SnippetPreviewModal({
   snippet: Snippet | null;
   onClose: () => void;
 }) {
+  const t = useStrings();
   return (
     <Modal opened={snippet !== null} onClose={onClose} title={snippet?.name} size="lg">
       {snippet?.kind === "text" && (
@@ -54,7 +55,47 @@ export function SnippetPreviewModal({
           style={{ width: "100%", height: "60vh", border: 0 }}
         />
       )}
+
+      {snippet?.kind === "checklist" && (
+        <ChecklistPreview payload={snippet.payload as ChecklistPayload | null} />
+      )}
+
+      {snippet?.kind === "ics" && (
+        <Stack gap={4}>
+          <Text size="sm">{snippet.files[0]}</Text>
+          <Text size="sm" c="dimmed">
+            {(snippet.payload as IcsPayload | null)?.mode === "separate"
+              ? t("ics_mode_separate")
+              : t("ics_mode_single")}
+          </Text>
+        </Stack>
+      )}
     </Modal>
+  );
+}
+
+/** Mirrors what the printer renders: an unticked box per item, due date last. */
+function ChecklistPreview({ payload }: { payload: ChecklistPayload | null }) {
+  const t = useStrings();
+  if (!payload) return null;
+  return (
+    <Stack gap={4}>
+      {payload.title && <Text fw={600}>{payload.title}</Text>}
+      {payload.items.map((item, index) => (
+        <Text key={index} size="sm">
+          [ ] {item.text}
+          {item.due && (
+            <Text span c="dimmed">
+              {" "}
+              ({t("due_label")} {item.due})
+            </Text>
+          )}
+        </Text>
+      ))}
+      <Text size="xs" c="dimmed" mt="xs">
+        {payload.mode === "separate" ? t("separate_receipts") : t("one_receipt")}
+      </Text>
+    </Stack>
   );
 }
 
@@ -155,6 +196,14 @@ export function SnippetEditModal({
               onChange={setAdded}
             />
           </>
+        )}
+
+        {/* checklist/ics hold structured data captured at print time — there's
+            no coherent form for editing it, so only the name is editable. */}
+        {(snippet.kind === "checklist" || snippet.kind === "ics") && (
+          <Text size="sm" c="dimmed">
+            {t("edit_name_only")}
+          </Text>
         )}
 
         {snippet.kind === "pdf" && (

@@ -33,11 +33,6 @@ interface IconButtonProps
     ElementProps<"button", keyof ActionIconProps>,
     Shared {}
 
-interface IconLinkProps
-  extends Omit<ActionIconProps, "color" | "variant" | "children">,
-    ElementProps<"a", keyof ActionIconProps>,
-    Shared {}
-
 /**
  * A compact icon-only action with a tooltip and an accessible name. The old UI
  * used bare emoji with only a `title` attribute; this guarantees the tooltip
@@ -53,30 +48,6 @@ export function IconActionButton({
   return (
     <Tooltip label={label} withArrow openDelay={300}>
       <ActionIcon
-        aria-label={label}
-        size="lg"
-        variant={style.variant}
-        color={style.color}
-        {...props}
-      >
-        {children}
-      </ActionIcon>
-    </Tooltip>
-  );
-}
-
-/** The same control as an anchor, for server-rendered page routes. */
-export function IconActionLink({
-  label,
-  tone = "secondary",
-  children,
-  ...props
-}: IconLinkProps) {
-  const style = TONES[tone];
-  return (
-    <Tooltip label={label} withArrow openDelay={300}>
-      <ActionIcon
-        component="a"
         aria-label={label}
         size="lg"
         variant={style.variant}

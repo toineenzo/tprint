@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from app import auth
+from app import auth, db
 from app import settings as settings_store
 from app.schemas import Align
 
@@ -53,4 +53,15 @@ async def save_settings(
     elif logo is not None and logo.filename:
         settings_store.set_logo(await logo.read(), logo.filename)
 
+    return settings_store.public_settings()
+
+
+@router.post("/reset")
+def reset_data(_: None = Depends(auth.require_api_auth)):
+    """Wipe every snippet, history entry, queued job and printer setting.
+
+    There is no undo and nothing is backed up first — the UI gates this behind a
+    confirmation modal, and that is the only safeguard by design.
+    """
+    db.reset_all()
     return settings_store.public_settings()

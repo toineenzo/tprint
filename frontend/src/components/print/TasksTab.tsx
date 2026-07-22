@@ -8,6 +8,7 @@ import { api } from "../../api/client";
 import type { PrintMode, PrintResponse } from "../../api/types";
 import { toDateOnly } from "../../dates";
 import { usePrint } from "../../hooks/usePrint";
+import { deriveName, useSaveAsSnippet } from "../../hooks/useSaveAsSnippet";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
 import { SecondaryButton } from "../ui/Buttons";
 import { IconActionButton } from "../ui/IconActionButton";
@@ -24,8 +25,10 @@ export function TasksTab() {
   const [title, setTitle] = useState("");
   const [mode, setMode] = useState<PrintMode>("single");
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
+  const [saveAsSnippet, setSaveAsSnippet] = useState(false);
   const options = useQueueOptions();
   const { print, busy } = usePrint();
+  const saveSnippet = useSaveAsSnippet();
 
   const patchRow = (id: number, patch: Partial<Row>) =>
     setRows((current) =>
@@ -46,12 +49,27 @@ export function TasksTab() {
       mode,
       ...(queue ? options.toPayload() : {}),
     };
-    const ok = await print(() =>
-      api.postJson<PrintResponse>("/print/checklist", body),
-    );
+    const ok = await print(async () => {
+      if (saveAsSnippet) {
+        // The structure, not a rendering of it — a saved checklist reprints
+        // through print_checklist with its due dates and mode intact.
+        await saveSnippet(
+          deriveName(title || items[0]?.text || "", t("kind_checklist")),
+          (form) => {
+            form.set("kind", "checklist");
+            form.set(
+              "payload",
+              JSON.stringify({ title: title.trim() || null, items, mode }),
+            );
+          },
+        );
+      }
+      return api.postJson<PrintResponse>("/print/checklist", body);
+    });
     if (ok) {
       setTitle("");
       setRows([emptyRow()]);
+      setSaveAsSnippet(false);
       options.reset();
     }
   };
@@ -129,6 +147,8 @@ export function TasksTab() {
         disabled={items.length === 0}
         onPrint={() => send(false)}
         onQueue={() => send(true)}
+        saveAsSnippet={saveAsSnippet}
+        onSaveAsSnippetChange={setSaveAsSnippet}
       />
     </Stack>
   );

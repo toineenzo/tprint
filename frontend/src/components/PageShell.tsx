@@ -1,10 +1,12 @@
 import { Box, Container, Group, Select, Stack, Text, Title } from "@mantine/core";
 import { IconLogout, IconSettings } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { useBootstrap, useStrings } from "../AppContext";
 import { ICON_SIZE, ICON_STROKE } from "../theme";
-import { IconActionButton, IconActionLink } from "./ui/IconActionButton";
+import { SettingsModal } from "./settings/SettingsModal";
+import { IconActionButton } from "./ui/IconActionButton";
+import { ConfirmModal } from "./ui/PromptModals";
 
 function TopBar({ title, actions }: { title: string; actions?: ReactNode }) {
   return (
@@ -44,22 +46,20 @@ function LanguageFooter() {
   );
 }
 
-/** The chrome shared by the index and settings pages. */
+/** The chrome around the main page. */
 export function PageShell({
   title,
   actions,
   aside,
   children,
-  narrow = false,
 }: {
   title: string;
   actions?: ReactNode;
   aside?: ReactNode;
   children: ReactNode;
-  narrow?: boolean;
 }) {
   return (
-    <Container size={narrow ? "sm" : "xl"} py="md">
+    <Container size="xl" py="md">
       <TopBar title={title} actions={actions} />
       <Box className={aside ? "layout-with-aside" : undefined} mt="md">
         <Stack gap="md">{children}</Stack>
@@ -73,18 +73,48 @@ export function PageShell({
 /** The top-bar actions for the main page: settings, and logout when enabled. */
 export function MainPageActions() {
   const t = useStrings();
-  const { auth_enabled } = useBootstrap();
+  const { auth_enabled, open_settings } = useBootstrap();
+
+  // `/settings` is still a real URL — it now serves the main page with this
+  // flag set, so old bookmarks land on the modal instead of a dead route.
+  const [settingsOpen, setSettingsOpen] = useState(open_settings ?? false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const logoutForm = useRef<HTMLFormElement>(null);
+
   return (
     <>
-      <IconActionLink label={t("settings")} href="/settings">
+      <IconActionButton
+        label={t("settings")}
+        onClick={() => setSettingsOpen(true)}
+      >
         <IconSettings size={ICON_SIZE.lg} stroke={ICON_STROKE} />
-      </IconActionLink>
+      </IconActionButton>
+      <SettingsModal
+        opened={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+
       {auth_enabled && (
-        <form method="post" action="/logout">
-          <IconActionButton label={t("logout")} type="submit">
+        <>
+          {/* Still a native form post to /logout — confirming just defers the
+              submit, so the request and the session clear are unchanged. */}
+          <form ref={logoutForm} method="post" action="/logout" />
+          <IconActionButton
+            label={t("logout")}
+            onClick={() => setConfirmingLogout(true)}
+          >
             <IconLogout size={ICON_SIZE.lg} stroke={ICON_STROKE} />
           </IconActionButton>
-        </form>
+          <ConfirmModal
+            opened={confirmingLogout}
+            title={t("logout")}
+            message={t("confirm_logout")}
+            confirmLabel={t("logout")}
+            confirmIcon={<IconLogout size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+            onClose={() => setConfirmingLogout(false)}
+            onConfirm={() => logoutForm.current?.requestSubmit()}
+          />
+        </>
       )}
     </>
   );

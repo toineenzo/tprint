@@ -48,19 +48,3 @@ export function DangerButton({ icon, children, ...props }: BaseProps) {
     </Button>
   );
 }
-
-interface LinkProps
-  extends Omit<ButtonProps, "color" | "variant">,
-    ElementProps<"a", keyof ButtonProps> {
-  icon?: ReactNode;
-  children: ReactNode;
-}
-
-/** Secondary-styled navigation, for real links (server-rendered page routes). */
-export function LinkButton({ icon, children, ...props }: LinkProps) {
-  return (
-    <Button component="a" variant="default" leftSection={icon} {...props}>
-      {children}
-    </Button>
-  );
-}

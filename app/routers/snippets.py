@@ -1,12 +1,18 @@
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
 
-from app import actions, auth, print_queue
+from app import actions, auth, i18n, print_queue
 from app import snippets as snippets_store
-from app.schemas import QueueOptions, queue_options_query
+from app.schemas import (
+    ChecklistPrintRequest,
+    PrintMode,
+    QueueOptions,
+    queue_options_query,
+)
 
 router = APIRouter(prefix="/snippets", tags=["snippets"])
 
@@ -29,6 +35,8 @@ async def create_snippet(
     name: str = Form(...),
     kind: str = Form(...),
     text_content: Optional[str] = Form(None),
+    payload: Optional[str] = Form(None),
+    mode: PrintMode = Form("single"),
     files: list[UploadFile] = File(default=[]),
     _: None = Depends(auth.require_api_auth),
 ):
@@ -51,8 +59,29 @@ async def create_snippet(
             raise HTTPException(400, "a file is required for pdf snippets")
         data = await uploads[0].read()
         snippet_id = snippets_store.create_pdf_snippet(name, data, uploads[0].filename)
+    elif kind == "checklist":
+        # Validated through the same model the /print/checklist route uses, so a
+        # saved checklist can't be shaped differently from a printed one.
+        try:
+            parsed = ChecklistPrintRequest.model_validate_json(payload or "")
+        except ValidationError as exc:
+            raise HTTPException(400, f"invalid checklist payload: {exc.error_count()} error(s)")
+        items = [item.model_dump() for item in parsed.items]
+        if not items:
+            raise HTTPException(400, "at least one item is required for checklist snippets")
+        snippet_id = snippets_store.create_checklist_snippet(
+            name, parsed.title, items, parsed.mode
+        )
+    elif kind == "ics":
+        uploads = [f for f in files if f.filename]
+        if not uploads:
+            raise HTTPException(400, "a file is required for ics snippets")
+        data = await uploads[0].read()
+        snippet_id = snippets_store.create_ics_snippet(name, data, uploads[0].filename, mode)
     else:
-        raise HTTPException(400, "kind must be 'text', 'image', or 'pdf'")
+        raise HTTPException(
+            400, "kind must be 'text', 'image', 'pdf', 'checklist', or 'ics'"
+        )
     return {"id": snippet_id}
 
 
@@ -81,7 +110,12 @@ async def update_snippet(
 
     uploads = [f for f in add_files if f.filename]
 
-    if snippet["kind"] == "text":
+    if snippet["kind"] in snippets_store.STRUCTURED_KINDS:
+        # Checklist/agenda content is structured data captured at print time;
+        # there's no text or file form that could edit it coherently, so the
+        # name is the only thing that changes.
+        snippets_store.rename_snippet(snippet_id, name)
+    elif snippet["kind"] == "text":
         if not text_content or not text_content.strip():
             raise HTTPException(400, "text_content is required for text snippets")
         snippets_store.update_snippet(snippet_id, name, text_content=text_content)
@@ -112,6 +146,7 @@ def delete_snippet(snippet_id: int, _: None = Depends(auth.require_api_auth)):
 @router.post("/{snippet_id}/print")
 def print_snippet(
     snippet_id: int,
+    request: Request,
     options: QueueOptions = Depends(queue_options_query),
     _: None = Depends(auth.require_api_auth),
 ):
@@ -119,10 +154,14 @@ def print_snippet(
     if not snippet:
         raise HTTPException(404, "snippet not found")
 
+    # Checklist snippets render a localized "due" label, so the language is
+    # captured with the job rather than read when the worker happens to run it.
+    lang = i18n.from_request(request)
+
     if print_queue.should_queue(options.queue, options.run_at, options.recurrence):
         job_id = print_queue.enqueue(
             "snippet",
-            {"snippet_id": snippet_id},
+            {"snippet_id": snippet_id, "lang": lang},
             label=snippet["name"],
             run_at=options.run_at,
             recurrence=options.recurrence,
@@ -130,5 +169,5 @@ def print_snippet(
         )
         return {"status": "queued", "job_id": job_id}
 
-    actions.print_snippet(snippet_id)
+    actions.print_snippet(snippet_id, lang)
     return {"status": "printed"}

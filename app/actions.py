@@ -1,6 +1,6 @@
 from PIL import Image
 
-from app import content, history, printer
+from app import content, history, ics_import, printer
 from app import snippets as snippets_store
 
 
@@ -51,10 +51,26 @@ def print_ics(events: list[dict], mode: str) -> None:
     history.add_entry("ics", preview_text=_ics_preview(events, mode))
 
 
-def print_snippet(snippet_id: int) -> None:
+def print_snippet(snippet_id: int, lang: str = "en") -> None:
     snippet = snippets_store.get_snippet(snippet_id)
     if not snippet:
         raise ValueError("snippet not found")
+
+    if snippet["kind"] == "checklist":
+        payload = snippet["payload"] or {}
+        printer.print_checklist(
+            payload.get("title"), payload.get("items") or [], payload.get("mode", "single"), lang
+        )
+        history.add_entry("snippet", preview_text=snippet["name"])
+        return
+
+    if snippet["kind"] == "ics":
+        payload = snippet["payload"] or {}
+        with open(snippets_store.file_path(snippet["files"][0]), "rb") as f:
+            events = ics_import.parse_ics(f.read())
+        printer.print_ics_events(events, payload.get("mode", "single"))
+        history.add_entry("snippet", preview_text=snippet["name"])
+        return
 
     if snippet["kind"] == "text":
         printer.print_text(snippet["text_content"])

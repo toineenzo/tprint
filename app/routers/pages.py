@@ -73,26 +73,33 @@ def logout(request: Request):
     return RedirectResponse("/login", status_code=303)
 
 
-@router.get("/")
-def index(request: Request):
-    if not auth.web_page_authed(request):
-        return RedirectResponse("/login")
+def _index(request: Request, open_settings: bool = False):
     return _shell(
         request,
         "index",
         i18n.from_request(request),
         snippets=snippets_store.list_snippets(),
         history=history.list_recent_public(20),
+        settings=settings_store.public_settings(),
+        open_settings=open_settings,
     )
+
+
+@router.get("/")
+def index(request: Request):
+    if not auth.web_page_authed(request):
+        return RedirectResponse("/login")
+    return _index(request)
 
 
 @router.get("/settings")
 def settings_page(request: Request):
+    """Settings is a modal on the main page, not a page of its own any more.
+
+    The URL is kept so existing bookmarks still land on settings — it renders
+    the same shell with the modal already open, rather than 404ing or dumping
+    the visitor on the main page with no explanation.
+    """
     if not auth.web_page_authed(request):
         return RedirectResponse("/login")
-    return _shell(
-        request,
-        "settings",
-        i18n.from_request(request),
-        settings=settings_store.public_settings(),
-    )
+    return _index(request, open_settings=True)

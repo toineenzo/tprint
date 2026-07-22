@@ -240,7 +240,7 @@ def _execute(kind: str, payload: dict) -> None:
         events = ics_import.parse_ics(_read_upload(payload["file"]))
         actions.print_ics(events, payload["mode"])
     elif kind == "snippet":
-        actions.print_snippet(payload["snippet_id"])
+        actions.print_snippet(payload["snippet_id"], payload.get("lang", "en"))
     else:
         raise ValueError(f"unknown job kind: {kind}")
 

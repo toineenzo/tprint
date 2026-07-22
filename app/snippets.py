@@ -6,6 +6,11 @@ from app import config, db, files
 
 ALLOWED_IMAGE_EXTS = ("png", "jpg", "jpeg", "gif", "bmp", "webp")
 ALLOWED_PDF_EXTS = ("pdf",)
+ALLOWED_ICS_EXTS = ("ics",)
+
+# Kinds whose content is structured data rather than something the edit form can
+# meaningfully show as text or files — these are rename-only once saved.
+STRUCTURED_KINDS = ("checklist", "ics")
 
 
 def _parse_row(row) -> dict:
@@ -13,10 +18,14 @@ def _parse_row(row) -> dict:
 
     The raw `file_paths` JSON column is dropped rather than passed through —
     it's the same data in a less usable form, and nothing downstream reads it.
+    `payload` gets the same treatment: checklist items and the agenda's print
+    mode come back as real objects, never as a JSON string the caller re-parses.
     """
     data = dict(row)
     raw = data.pop("file_paths", None)
     data["files"] = json.loads(raw) if raw else []
+    payload = data.get("payload")
+    data["payload"] = json.loads(payload) if payload else None
     return data
 
 
@@ -76,6 +85,45 @@ def create_pdf_snippet(name: str, data: bytes, filename: str) -> int:
             (name, json.dumps([saved])),
         )
         return cur.lastrowid
+
+
+def create_checklist_snippet(name: str, title: str | None, items: list[dict], mode: str) -> int:
+    """Store the checklist's structure, not its rendered text.
+
+    Printing it later goes back through `printer.print_checklist`, so a saved
+    checklist reprints identically — bold centred title, per-item due dates and
+    the single/separate receipt mode all intact.
+    """
+    payload = json.dumps({"title": title, "items": items, "mode": mode})
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO snippets (name, kind, payload) VALUES (?, 'checklist', ?)",
+            (name, payload),
+        )
+        return cur.lastrowid
+
+
+def create_ics_snippet(name: str, data: bytes, filename: str, mode: str) -> int:
+    """Store the original .ics file, not the events parsed out of it.
+
+    Re-parsing on print keeps a saved agenda faithful to the uploaded calendar
+    rather than freezing one rendering of it.
+    """
+    saved = _save_file(data, filename, ALLOWED_ICS_EXTS)
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO snippets (name, kind, file_paths, payload) VALUES (?, 'ics', ?, ?)",
+            (name, json.dumps([saved]), json.dumps({"mode": mode})),
+        )
+        return cur.lastrowid
+
+
+def rename_snippet(snippet_id: int, name: str) -> None:
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE snippets SET name = ?, updated_at = datetime('now') WHERE id = ?",
+            (name, snippet_id),
+        )
 
 
 def update_snippet(

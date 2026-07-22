@@ -16,13 +16,14 @@ any particular platform beyond Docker (or a plain Python environment).
 
 - **Print anything**: plain text, images, multi-page PDFs (rasterized page
   by page).
-- **Snippets**: save and re-print recurring content — text, one-or-more
-  images (printed in sequence on one receipt), or a PDF. Preview any
-  snippet before printing, and edit it later (rename, change the text,
-  add/remove images, or replace the PDF) without recreating it.
-- **Quick save-and-print**: a save button next to the text/image/PDF
-  print forms prints your current input and saves it as a snippet in one
-  step, for things you'll want to print again.
+- **Snippets**: tick **"Save as snippet"** next to Print or Queue on any tab
+  and whatever you just printed is kept for re-printing later — text, one-or-more
+  images (printed in sequence on one receipt), a PDF, a checklist, or a
+  calendar. Preview any snippet before printing, and edit it later (rename,
+  change the text, add/remove images, or replace the PDF) without recreating
+  it. Saved checklists and calendars keep their structure, so re-printing one
+  reproduces the original receipt exactly — due dates, list title and the
+  one-receipt/separate-receipts choice included.
 - **Surprise me**: a bundled, curated (not API-dependent) list of jokes,
   recipes, and fortunes — in English or Dutch.
 - **Task/checklists**: build a list of items with optional due dates, print
@@ -39,7 +40,7 @@ any particular platform beyond Docker (or a plain Python environment).
 - **Printer settings**: a configurable header/footer "frame" (text and/or a
   logo image, with a `{datetime}` placeholder) applied to every receipt, plus
   default text style (bold/double-width/alignment) — all editable from the
-  web UI instead of the printer's own paper self-test menu.
+  gear icon in the web UI instead of the printer's own paper self-test menu.
 - **Localization**: UI and surprise-me content available in English or Dutch,
   switchable per browser (cookie-based, no account needed). Set
   `DEFAULT_LANGUAGE` to pick which one new visitors get.
@@ -229,7 +230,12 @@ connected to the Proxmox host via USB.
      policy there (e.g. Cloudflare Access) and set `AUTH_ENABLED=false` to
      skip the app's own login screen.
 
-## Printer settings (`/settings`)
+## Printer settings
+
+Open these with the **gear icon** in the top right. They appear as a dialog
+over the main page, so you don't lose whatever you were about to print — press
+`Esc` or click away to dismiss. (The old `/settings` address still works and
+opens the same dialog, so existing bookmarks are fine.)
 
 A configurable "frame" applied to every receipt the app prints, regardless
 of source (text, image, PDF, checklist, calendar, snippet):
@@ -248,6 +254,14 @@ memory switches over USB is possible in principle but uses undocumented,
 model-specific vendor commands that aren't safe to guess at without the
 exact printer in hand to verify against.
 
+### Danger zone: reset all data
+
+At the bottom of the same dialog, **Reset all data** deletes every snippet,
+the entire print history, anything queued, and these printer settings
+(including the logo) — leaving the app exactly as it was on first run. It asks
+for confirmation first, and there is **no undo and no backup**: if you want to
+keep the data, copy your `DATA_DIR` volume before pressing it.
+
 ## REST API
 
 All endpoints below require either a logged-in browser session or, if
@@ -263,8 +277,8 @@ All endpoints below require either a logged-in browser session or, if
 | `POST /print/ics` | multipart `file` (.ics), form field `mode` (`single`\|`separate`) | Print calendar events from an ICS file. |
 | `GET /snippets` | — | List saved snippets. |
 | `GET /snippets/{id}` | — | Get a single snippet (name, kind, text, file list). |
-| `POST /snippets` | multipart `name`, `kind` (`text`\|`image`\|`pdf`), `text_content` or one-or-more `files` | Save a snippet. |
-| `PUT /snippets/{id}` | multipart `name`, `text_content`, `add_files`, `remove_files` | Edit a snippet (fields used depend on its kind). |
+| `POST /snippets` | multipart `name`, `kind` (`text`\|`image`\|`pdf`\|`checklist`\|`ics`), plus `text_content` (text), one-or-more `files` (image/pdf/ics), `payload` JSON (checklist), `mode` (ics) | Save a snippet. |
+| `PUT /snippets/{id}` | multipart `name`, `text_content`, `add_files`, `remove_files` | Edit a snippet (fields used depend on its kind; `checklist` and `ics` accept `name` only). |
 | `DELETE /snippets/{id}` | — | Delete a snippet. |
 | `POST /snippets/{id}/print` | — | Print a saved snippet. |
 | `GET /history` | — | Recent print history (kind, preview text, has-image flag, timestamp). |
@@ -276,6 +290,7 @@ All endpoints below require either a logged-in browser session or, if
 | `POST /queue/cancel-current` | — | Abort whatever's currently printing (works mid-transfer on a big job). |
 | `GET /api/settings` | — | Current header/footer/logo/text-style settings. |
 | `POST /api/settings` | multipart `header_text`, `footer_text`, `default_align`, `default_bold`, `default_double_width`, `remove_logo`, `logo` | Replace the printer settings. Sends every field — omitted fields reset to their default. |
+| `POST /api/settings/reset` | — | **Destructive, no undo.** Deletes every snippet, all history, the queue and the printer settings, returning the app to a fresh install. |
 
 `/print/*` and `/snippets/{id}/print` also accept `queue` (bool), `run_at`
 (ISO datetime), `recurrence` (`daily`\|`weekly`\|`monthly`), and

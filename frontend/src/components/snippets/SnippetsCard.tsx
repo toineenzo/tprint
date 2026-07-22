@@ -20,7 +20,6 @@ import { IconActionButton } from "../ui/IconActionButton";
 import { ConfirmModal } from "../ui/PromptModals";
 import { SectionCard } from "../ui/SectionCard";
 import { TypeBadge } from "../ui/TypeBadge";
-import { SnippetCreateForm } from "./SnippetCreateForm";
 import { SnippetEditModal, SnippetPreviewModal } from "./SnippetModals";
 
 function SnippetRow({
@@ -104,8 +103,6 @@ export function SnippetsCard() {
           ))}
         </Stack>
       )}
-
-      <SnippetCreateForm />
 
       <SnippetPreviewModal
         snippet={previewing}

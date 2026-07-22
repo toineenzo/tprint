@@ -6,10 +6,9 @@ import { useStrings } from "../../AppContext";
 import { api, appendQueueOptions } from "../../api/client";
 import type { PrintResponse, SnippetKind } from "../../api/types";
 import { usePrint } from "../../hooks/usePrint";
-import { useQuickSave } from "../../hooks/useQuickSave";
+import { deriveFileName, useSaveAsSnippet } from "../../hooks/useSaveAsSnippet";
 import type { StringKey } from "../../i18n/strings";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
-import { NamePromptModal } from "../ui/PromptModals";
 import { PrintActions } from "./PrintActions";
 import { QueueOptionsFields, useQueueOptions } from "./QueueOptionsFields";
 
@@ -43,19 +42,30 @@ export const FILE_TABS: Record<"image" | "pdf", FileTabConfig> = {
 export function FileTab({ config }: { config: FileTabConfig }) {
   const t = useStrings();
   const [file, setFile] = useState<File | null>(null);
-  const [namePromptOpen, setNamePromptOpen] = useState(false);
+  const [saveAsSnippet, setSaveAsSnippet] = useState(false);
   const options = useQueueOptions();
   const { print, busy } = usePrint();
-  const { quickSave } = useQuickSave();
+  const saveSnippet = useSaveAsSnippet();
+
+  const kindLabelKey = config.kind === "image" ? "kind_image" : "kind_pdf";
 
   const send = async (queue: boolean) => {
     if (!file) return;
     const form = new FormData();
     form.set("file", file);
     if (queue) appendQueueOptions(form, options.toPayload());
-    const ok = await print(() => api.postForm<PrintResponse>(config.url, form));
+    const ok = await print(async () => {
+      if (saveAsSnippet) {
+        await saveSnippet(deriveFileName(file, t(kindLabelKey)), (snippet) => {
+          snippet.set("kind", config.kind);
+          snippet.set("files", file);
+        });
+      }
+      return api.postForm<PrintResponse>(config.url, form);
+    });
     if (ok) {
       setFile(null);
+      setSaveAsSnippet(false);
       options.reset();
     }
   };
@@ -69,7 +79,7 @@ export function FileTab({ config }: { config: FileTabConfig }) {
         onChange={setFile}
         accept={config.accept}
         clearable
-        placeholder={t(config.kind === "image" ? "kind_image" : "kind_pdf")}
+        placeholder={t(kindLabelKey)}
         aria-label={t(config.printLabelKey)}
         leftSection={<Icon size={ICON_SIZE.md} stroke={ICON_STROKE} />}
       />
@@ -82,22 +92,8 @@ export function FileTab({ config }: { config: FileTabConfig }) {
         disabled={!file}
         onPrint={() => send(false)}
         onQueue={() => send(true)}
-        onQuickSave={() => setNamePromptOpen(true)}
-      />
-
-      <NamePromptModal
-        opened={namePromptOpen}
-        title={t("quick_save_hint")}
-        onClose={() => setNamePromptOpen(false)}
-        onSubmit={async (name) => {
-          setNamePromptOpen(false);
-          if (!file) return;
-          await quickSave(name, (form) => {
-            form.set("kind", config.kind);
-            form.set("files", file);
-          });
-          setFile(null);
-        }}
+        saveAsSnippet={saveAsSnippet}
+        onSaveAsSnippetChange={setSaveAsSnippet}
       />
     </Stack>
   );

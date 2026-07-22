@@ -23,14 +23,14 @@ app/
   main.py            FastAPI app, lifespan (db.init_db + queue worker startup), routers
   config.py           Env vars, get_build_date()
   auth.py              Session-cookie auth (web pages) + bearer-token auth (API/machine callers)
-  db.py                 SQLite schema + migrations — see "Database" below
+  db.py                 SQLite schema + migrations + reset_all() — see "Database" below
   printer.py             ESC/POS byte building, the single physical-write choke point, cancellation
   actions.py               Shared "print this + log history" logic — instant AND queued paths both call these
   print_queue.py             Queue/schedule/recurrence + the background asyncio worker
   schemas.py                  Shared pydantic request models + queue-option validation (see below)
   history.py                   Print history persistence + thumbnail generation
   settings.py                   Printer "settings" (header/footer/logo/text style) — app-level only, see printer.py docstring
-  snippets.py                    Snippet CRUD (text/image/pdf, multi-file)
+  snippets.py                    Snippet CRUD (text/image/pdf/checklist/ics, multi-file)
   files.py                        Upload filename/extension handling shared by every upload path
   content.py                       Surprise-me (joke/recipe/fortune) loader + formatter, language-aware
   content/*.json                    Per-language joke/fortune/recipe data (see i18n section below)
@@ -44,8 +44,9 @@ app/
 frontend/                 React + Mantine UI. See frontend/README.md for UI conventions.
   src/theme.ts              The only file that names a colour — semantic roles live here
   src/constants/            contentTypes.ts: kind -> icon + colour + label, used by history/queue/snippets
-  src/components/ui/        Shared primitives (Buttons, IconActionButton, SectionCard, TypeBadge, …)
-  src/pages/                IndexPage, SettingsPage, LoginPage — picked by __TPRINT__.page
+  src/components/ui/        Shared primitives (Buttons, IconActionButton, SectionCard, TypeBadge, PromptModals, …)
+  src/components/settings/  SettingsModal + SettingsForm — the printer settings, as a modal
+  src/pages/                IndexPage, LoginPage — picked by __TPRINT__.page
 ```
 
 ## Key design decisions (and why)
@@ -86,8 +87,46 @@ mid-transfer — instant or queued — raises `PrintCancelled`. Don't build a
 per-job cancellation token system; the hardware constraint makes the global
 flag correct, not a shortcut.
 
+**A snippet is only ever created by printing something with "Save as snippet"
+ticked.** There is no separate snippet-creation form and no separate save
+button — both existed once and were removed. `PrintActions` renders the one
+checkbox, each tab passes its own state, and the tab's `usePrint` closure calls
+`useSaveAsSnippet` *before* the print request so the two produce a single
+outcome toast instead of two that can disagree. Names are derived from the
+content (first line / filename / list title) because the checkbox deliberately
+asks for nothing else; renaming afterwards is what the edit modal is for.
+
+**Checklist and agenda snippets store structure, not rendered text.** A
+`checklist` snippet keeps `{title, items, mode}` in the `payload` column; an
+`ics` snippet keeps the uploaded `.ics` file in `file_paths` and only `{mode}`
+in `payload`, so printing re-parses the calendar. Both then reprint through the
+*same* `printer.print_checklist` / `print_ics_events` as the original — verified
+byte-identical at `_send`. Don't "simplify" either into a flattened text
+snippet: that silently loses the bold centred title, the per-item due dates and
+the single/separate receipt mode. These two kinds are structured data with no
+coherent edit form, so `routers/snippets.py` makes them rename-only
+(`snippets_store.STRUCTURED_KINDS`).
+
+**Settings is a modal, and `/settings` is only kept alive for bookmarks.**
+There is exactly one React page behind auth (`index`), so changing a header
+never costs you the page you were printing from. `GET /settings` still exists
+but renders the *index* shell with `open_settings: true`, which
+`MainPageActions` uses as the modal's initial state — old bookmarks land on
+settings instead of a 404 or a silent redirect. If you add another
+settings-like surface, make it a modal too rather than reintroducing a second
+`PageName`; the shell/bootstrap machinery assumes one authed page.
+
+**Every confirmation goes through `ui/PromptModals.tsx`'s `ConfirmModal`.**
+There are no `window.confirm`/`alert` calls anywhere and there should never be
+one — the browser's own dialogs are OS chrome that ignore the app's theme
+entirely. `ConfirmModal` takes `tone` (`danger`/`primary`) and `confirmIcon`
+so a non-destructive confirmation (logout) reuses it rather than growing a
+second component. Modals close on Escape by the `Modal` defaults in
+`theme.ts`, which state `closeOnEscape` explicitly because it's a guarantee
+the app makes rather than an incidental Mantine default.
+
 **Printer "settings" are app-level formatting only, not real memory
-switches.** `settings.py` / `/settings` control a header/footer "frame"
+switches.** `settings.py` / the settings modal control a header/footer "frame"
 and default text style, applied in `printer.py`'s `_print_job`. This is
 deliberately *not* wired to the printer's actual persistent memory switches
 (paper width, auto-cutter behavior, etc.) — those use undocumented,
@@ -131,18 +170,32 @@ change is additive or structural:
 - **New table, or a column with a safe default:** plain
   `CREATE TABLE IF NOT EXISTS` / the schema is just re-run every startup.
   This is safe because it's idempotent and doesn't touch existing data.
-- **Changing an existing table's shape** (the `snippets` table went from
-  one `image_path` column to a JSON `file_paths` list, to support multiple
-  images and PDFs): SQLite can't `ALTER` a `CHECK` constraint or safely
-  change column semantics in place, so `db.py`'s `_migrate_snippets()`
-  detects the old shape via `PRAGMA table_info`, renames the old table,
-  creates the new one, copies rows across with the transformation applied,
-  and drops the old table. **If you need another structural change,
-  follow this pattern** — and test it against a synthetic copy of the old
-  schema with real-looking data before shipping, the way `_migrate_snippets`
-  was verified against a reconstructed copy of production data before it
-  shipped. Never assume `CREATE TABLE IF NOT EXISTS` is enough once a table
-  already has a different shape in the wild.
+- **Changing an existing table's shape:** SQLite can't `ALTER` a `CHECK`
+  constraint or safely change column semantics in place, so `db.py`'s
+  `_migrate_snippets()` detects the old shape via `PRAGMA table_info` (and, for
+  the `CHECK` itself, the table's SQL in `sqlite_master`), then hands off to
+  `_rebuild_snippets()`: rename the old table aside, create the new one, copy
+  rows across with the transformation applied, drop the old one. Two structural
+  changes have shipped through it so far — one `image_path` column becoming a
+  JSON `file_paths` list, and the later addition of `payload` alongside a
+  widened `kind` CHECK for the `checklist`/`ics` snippet kinds. Both hops still
+  run, in order, on a DB old enough to need them.
+
+  **If you need another structural change, follow this pattern** — and test it
+  against a synthetic copy of *every* old shape with real-looking data before
+  shipping, the way both of the above were. Note the trap the second one hit:
+  the oldest table has no `updated_at` column at all, so a generic
+  copy-these-columns loop `KeyError`s on it. Never assume
+  `CREATE TABLE IF NOT EXISTS` is enough once a table already has a different
+  shape in the wild.
+
+`db.py` also has **`reset_all()`** — drops every user table, empties the
+content directories and the settings logo, then re-runs `init_db()`. It's
+exposed as `POST /api/settings/reset` behind the settings modal's "Danger zone"
+confirmation. It drops tables rather than `DELETE`ing rows so `AUTOINCREMENT`
+counters restart and the result is indistinguishable from a fresh volume. If
+you add a directory the app writes user content into, add it to `_CONTENT_DIRS`
+or its files will outlive a reset.
 
 ## i18n
 
@@ -285,8 +338,9 @@ Anything that changes what the image contains still needs the local
   on-disk paths and SQLite's 0/1 booleans stay out of the API.
 - The frontend is React + Mantine built by Vite (`frontend/`). **Read
   `frontend/README.md` before touching the UI** — it defines the semantic
-  colour roles, the shared button/icon primitives, and the content-type map,
-  which exist so new features stay visually consistent by construction.
+  colour roles, the shared button/icon primitives, the modal conventions, and
+  the content-type map, which exist so new features stay visually consistent by
+  construction.
 - i18n strings are always looked up through `i18n.t(lang)` server-side and
   `useStrings()` client-side, never hardcoded — see the i18n section above
   before adding any user-facing string.
@@ -300,12 +354,18 @@ Anything that changes what the image contains still needs the local
   `queue_options_form`, if it should be queueable), handle the new `kind` in
   `print_queue._execute()`, add the kind to
   `frontend/src/constants/contentTypes.ts` so history/queue render it with an
-  icon, and add a tab in `frontend/src/components/print/`.
+  icon, and add a tab in `frontend/src/components/print/`. The tab passes
+  `saveAsSnippet` state to `PrintActions` and saves inside its `usePrint`
+  closure — if the new type should be snippet-able, it also needs a `kind`
+  branch in `POST /snippets`, a store `create_*_snippet()`, and a branch in
+  `actions.print_snippet()`.
 - **New setting**: add a column to the `settings` table in `db.py`
   (additive, no migration needed — it's a single-row table), read/write it
   in `settings.py` **and expose it in `public_settings()`**, add a field to
-  `frontend/src/pages/SettingsPage.tsx`, apply it in `printer.py`'s
-  `_print_job` if it affects output.
+  `frontend/src/components/settings/SettingsForm.tsx`, apply it in
+  `printer.py`'s `_print_job` if it affects output.
+- **New confirmation prompt**: reuse `ConfirmModal` from
+  `frontend/src/components/ui/PromptModals.tsx` — never `window.confirm`.
 - **New language**: see the i18n section above.
 
 ## Alias files for other AI assistants

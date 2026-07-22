@@ -15,12 +15,10 @@ import { AppProvider } from "./AppContext";
 import { readBootstrap, type PageName } from "./bootstrap";
 import { IndexPage } from "./pages/IndexPage";
 import { LoginPage } from "./pages/LoginPage";
-import { SettingsPage } from "./pages/SettingsPage";
 import { theme } from "./theme";
 
 const PAGES: Record<PageName, () => JSX.Element> = {
   index: IndexPage,
-  settings: SettingsPage,
   login: LoginPage,
 };
 

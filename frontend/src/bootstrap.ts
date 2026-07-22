@@ -1,7 +1,7 @@
 import type { HistoryEntry, PrinterSettings, Snippet } from "./api/types";
 import type { Strings } from "./i18n/strings";
 
-export type PageName = "index" | "settings" | "login";
+export type PageName = "index" | "login";
 
 /**
  * The payload app/templates/base.html injects into the page. Rendering the
@@ -20,8 +20,9 @@ export type Bootstrap = {
   /** index page only */
   snippets?: Snippet[];
   history?: HistoryEntry[];
-  /** settings page only */
   settings?: PrinterSettings;
+  /** Set when the page was reached via `/settings` — opens the modal on load. */
+  open_settings?: boolean;
   /** login page only */
   login_error?: string | null;
 };

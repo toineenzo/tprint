@@ -6,6 +6,7 @@ import { useStrings } from "../../AppContext";
 import { api, appendQueueOptions } from "../../api/client";
 import type { PrintMode, PrintResponse } from "../../api/types";
 import { usePrint } from "../../hooks/usePrint";
+import { deriveFileName, useSaveAsSnippet } from "../../hooks/useSaveAsSnippet";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
 import { PrintActions } from "./PrintActions";
 import { QueueOptionsFields, useQueueOptions } from "./QueueOptionsFields";
@@ -14,8 +15,10 @@ export function IcsTab() {
   const t = useStrings();
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<PrintMode>("single");
+  const [saveAsSnippet, setSaveAsSnippet] = useState(false);
   const options = useQueueOptions();
   const { print, busy } = usePrint();
+  const saveSnippet = useSaveAsSnippet();
 
   const send = async (queue: boolean) => {
     if (!file) return;
@@ -23,9 +26,21 @@ export function IcsTab() {
     form.set("file", file);
     form.set("mode", mode);
     if (queue) appendQueueOptions(form, options.toPayload());
-    const ok = await print(() => api.postForm<PrintResponse>("/print/ics", form));
+    const ok = await print(async () => {
+      if (saveAsSnippet) {
+        // Stores the .ics itself, so reprinting re-parses the calendar rather
+        // than replaying one frozen rendering of it.
+        await saveSnippet(deriveFileName(file, t("kind_ics")), (snippet) => {
+          snippet.set("kind", "ics");
+          snippet.set("files", file);
+          snippet.set("mode", mode);
+        });
+      }
+      return api.postForm<PrintResponse>("/print/ics", form);
+    });
     if (ok) {
       setFile(null);
+      setSaveAsSnippet(false);
       options.reset();
     }
   };
@@ -63,6 +78,8 @@ export function IcsTab() {
         disabled={!file}
         onPrint={() => send(false)}
         onQueue={() => send(true)}
+        saveAsSnippet={saveAsSnippet}
+        onSaveAsSnippetChange={setSaveAsSnippet}
       />
     </Stack>
   );
