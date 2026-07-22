@@ -49,7 +49,7 @@ export function SettingsModal({
       opened={opened}
       onClose={onClose}
       title={t("settings_title")}
-      size="lg"
+      size="xl"
     >
       <SettingsForm initial={saved} onSaved={setSettings} />
     </Modal>

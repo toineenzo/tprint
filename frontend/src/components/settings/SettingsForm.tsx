@@ -11,6 +11,7 @@ import {
   Select,
   Stack,
   Table,
+  Tabs,
   Text,
   Textarea,
 } from "@mantine/core";
@@ -156,6 +157,7 @@ export function SettingsForm({
   // Bumped after every save so the preview panel refetches; the endpoint
   // renders from the stored settings, not from this form's state.
   const [previewKey, setPreviewKey] = useState(0);
+  const [tab, setTab] = useState<string | null>("frame");
 
   const patch = (next: Partial<PrinterSettings>) =>
     setValues((current) => ({ ...current, ...next }));
@@ -194,240 +196,272 @@ export function SettingsForm({
     }
   };
 
+  // The three field tabs share one Save (a single POST persists all `values`),
+  // so the Save button + preview live below the Tabs and only show for them —
+  // Content, About and Reset are self-contained and don't touch `values`.
+  const fieldTab = tab === "frame" || tab === "output" || tab === "retention";
+
   return (
-    <Stack gap="md">
-      <Text c="dimmed" size="sm">
-        {t("settings_intro")}
-      </Text>
+    <Tabs
+      orientation="vertical"
+      value={tab}
+      onChange={setTab}
+      variant="pills"
+    >
+      <Tabs.List mr="md">
+        <Tabs.Tab value="frame">{t("settings_tab_frame")}</Tabs.Tab>
+        <Tabs.Tab value="output">{t("settings_tab_output")}</Tabs.Tab>
+        <Tabs.Tab value="retention">{t("settings_retention")}</Tabs.Tab>
+        <Tabs.Tab value="content">{t("settings_tab_content")}</Tabs.Tab>
+        <Tabs.Tab value="about">{t("about_title")}</Tabs.Tab>
+      </Tabs.List>
 
-      <Textarea
-        label={t("settings_header_text")}
-        description={t("settings_header_hint")}
-        autosize
-        minRows={2}
-        value={values.header_text ?? ""}
-        onChange={(event) => patch({ header_text: event.currentTarget.value })}
-      />
-
-      <Textarea
-        label={t("settings_footer_text")}
-        description={t("settings_footer_hint")}
-        autosize
-        minRows={2}
-        value={values.footer_text ?? ""}
-        onChange={(event) => patch({ footer_text: event.currentTarget.value })}
-      />
-
-      <Stack gap="xs">
-        {values.has_logo && (
-          <Group gap="sm" align="center">
-            <Text size="sm" c="dimmed">
-              {t("settings_current_logo")}
+      <Stack gap="md" style={{ flex: 1, minWidth: 0 }}>
+        <Tabs.Panel value="frame">
+          <Stack gap="md">
+            <Text c="dimmed" size="sm">
+              {t("settings_intro")}
             </Text>
-            <Image src="/api/settings/logo" alt="" h={40} w="auto" fit="contain" />
-            <Checkbox
-              label={t("settings_remove_logo")}
-              checked={removeLogo}
-              onChange={(event) => setRemoveLogo(event.currentTarget.checked)}
-            />
-          </Group>
-        )}
-        <FileInput
-          label={t("settings_logo")}
-          aria-label={t("settings_logo")}
-          description={t("settings_logo_hint")}
-          accept="image/*"
-          clearable
-          disabled={removeLogo}
-          value={logo}
-          onChange={setLogo}
-          leftSection={<IconPhoto size={ICON_SIZE.md} stroke={ICON_STROKE} />}
-        />
-      </Stack>
 
-      <Stack gap="xs">
-        {values.has_footer_logo && (
-          <Group gap="sm" align="center">
-            <Text size="sm" c="dimmed">
-              {t("settings_current_footer_logo")}
+            <Textarea
+              label={t("settings_header_text")}
+              description={t("settings_header_hint")}
+              autosize
+              minRows={2}
+              value={values.header_text ?? ""}
+              onChange={(event) => patch({ header_text: event.currentTarget.value })}
+            />
+
+            <Textarea
+              label={t("settings_footer_text")}
+              description={t("settings_footer_hint")}
+              autosize
+              minRows={2}
+              value={values.footer_text ?? ""}
+              onChange={(event) => patch({ footer_text: event.currentTarget.value })}
+            />
+
+            <Stack gap="xs">
+              {values.has_logo && (
+                <Group gap="sm" align="center">
+                  <Text size="sm" c="dimmed">
+                    {t("settings_current_logo")}
+                  </Text>
+                  <Image src="/api/settings/logo" alt="" h={40} w="auto" fit="contain" />
+                  <Checkbox
+                    label={t("settings_remove_logo")}
+                    checked={removeLogo}
+                    onChange={(event) => setRemoveLogo(event.currentTarget.checked)}
+                  />
+                </Group>
+              )}
+              <FileInput
+                label={t("settings_logo")}
+                aria-label={t("settings_logo")}
+                description={t("settings_logo_hint")}
+                accept="image/*"
+                clearable
+                disabled={removeLogo}
+                value={logo}
+                onChange={setLogo}
+                leftSection={<IconPhoto size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+              />
+            </Stack>
+
+            <Stack gap="xs">
+              {values.has_footer_logo && (
+                <Group gap="sm" align="center">
+                  <Text size="sm" c="dimmed">
+                    {t("settings_current_footer_logo")}
+                  </Text>
+                  <Image src="/api/settings/footer-logo" alt="" h={40} w="auto" fit="contain" />
+                  <Checkbox
+                    label={t("settings_remove_logo")}
+                    checked={removeFooterLogo}
+                    onChange={(event) => setRemoveFooterLogo(event.currentTarget.checked)}
+                  />
+                </Group>
+              )}
+              <FileInput
+                label={t("settings_footer_logo")}
+                aria-label={t("settings_footer_logo")}
+                description={t("settings_footer_logo_hint")}
+                accept="image/*"
+                clearable
+                disabled={removeFooterLogo}
+                value={footerLogo}
+                onChange={setFooterLogo}
+                leftSection={<IconPhoto size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+              />
+            </Stack>
+          </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="output">
+          <Stack gap="md">
+            <Stack gap="xs">
+              <Text size="sm" c="dimmed">
+                {t("settings_text_style")}
+              </Text>
+              <Checkbox
+                label={t("settings_bold")}
+                checked={values.default_bold}
+                onChange={(event) => patch({ default_bold: event.currentTarget.checked })}
+              />
+              <Checkbox
+                label={t("settings_double_width")}
+                checked={values.default_double_width}
+                onChange={(event) =>
+                  patch({ default_double_width: event.currentTarget.checked })
+                }
+              />
+            </Stack>
+
+            <Select
+              label={t("settings_align")}
+              value={values.default_align}
+              allowDeselect={false}
+              onChange={(value) => patch({ default_align: (value as Align) ?? "left" })}
+              data={[
+                { value: "left", label: t("align_left") },
+                { value: "center", label: t("align_center") },
+                { value: "right", label: t("align_right") },
+              ]}
+            />
+
+            <Divider my="xs" />
+
+            <Stack gap="xs">
+              <Text size="sm" fw={600}>
+                {t("settings_paper")}
+              </Text>
+              <SegmentedControl
+                fullWidth
+                value={PAPER_PRESETS.includes(values.paper_width_px)
+                  ? String(values.paper_width_px)
+                  : "custom"}
+                onChange={(next) =>
+                  patch({
+                    paper_width_px:
+                      next === "custom" ? values.paper_width_px : Number(next),
+                  })
+                }
+                data={[
+                  { value: "576", label: t("paper_80mm") },
+                  { value: "384", label: t("paper_58mm") },
+                  { value: "custom", label: t("paper_custom") },
+                ]}
+              />
+              <NumberInput
+                label={t("paper_width_label")}
+                description={t("paper_width_hint")}
+                min={100}
+                max={2048}
+                value={values.paper_width_px}
+                onChange={(value) =>
+                  patch({ paper_width_px: Number(value) || values.paper_width_px })
+                }
+              />
+              <Checkbox
+                label={t("settings_auto_cut")}
+                description={t("settings_auto_cut_hint")}
+                checked={values.auto_cut}
+                onChange={(event) => patch({ auto_cut: event.currentTarget.checked })}
+              />
+            </Stack>
+
+            <Divider my="xs" />
+
+            <Stack gap="xs">
+              <Text size="sm" fw={600}>
+                {t("settings_behaviour")}
+              </Text>
+              <Checkbox
+                label={t("settings_confirm_print")}
+                description={t("settings_confirm_print_hint")}
+                checked={values.confirm_before_print}
+                onChange={(event) =>
+                  patch({ confirm_before_print: event.currentTarget.checked })
+                }
+              />
+              <Checkbox
+                label={t("settings_surprise_preview")}
+                description={t("settings_surprise_preview_hint")}
+                checked={values.surprise_preview}
+                onChange={(event) =>
+                  patch({ surprise_preview: event.currentTarget.checked })
+                }
+              />
+              <NumberInput
+                label={t("settings_print_delay")}
+                description={t("settings_print_delay_hint")}
+                min={0}
+                max={60}
+                value={values.print_delay_seconds}
+                onChange={(value) => patch({ print_delay_seconds: Number(value) || 0 })}
+              />
+            </Stack>
+          </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="retention">
+          <Stack gap="xs">
+            <Text size="sm" fw={600}>
+              {t("settings_retention")}
             </Text>
-            <Image src="/api/settings/footer-logo" alt="" h={40} w="auto" fit="contain" />
-            <Checkbox
-              label={t("settings_remove_logo")}
-              checked={removeFooterLogo}
-              onChange={(event) => setRemoveFooterLogo(event.currentTarget.checked)}
+            <Text size="sm" c="dimmed">
+              {t("settings_retention_hint")}
+            </Text>
+            <NumberInput
+              label={t("settings_retention_items")}
+              description={t("settings_retention_zero")}
+              min={0}
+              value={values.retention_max_items}
+              onChange={(value) => patch({ retention_max_items: Number(value) || 0 })}
             />
-          </Group>
+            <NumberInput
+              label={t("settings_retention_age")}
+              description={t("settings_retention_zero")}
+              min={0}
+              value={values.retention_max_age_days}
+              onChange={(value) =>
+                patch({ retention_max_age_days: Number(value) || 0 })
+              }
+            />
+          </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="content">
+          <ContentManager />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="about">
+          <Stack gap="md">
+            <AboutSection />
+            <Divider my="xs" />
+            <ResetDataSection />
+          </Stack>
+        </Tabs.Panel>
+
+        {fieldTab && (
+          <>
+            <Group justify="flex-end">
+              <PrimaryButton
+                onClick={save}
+                loading={busy}
+                icon={<IconDeviceFloppy size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+              >
+                {t("save_settings")}
+              </PrimaryButton>
+            </Group>
+
+            <Divider my="xs" />
+
+            <SettingsPreview refreshKey={previewKey} />
+          </>
         )}
-        <FileInput
-          label={t("settings_footer_logo")}
-          aria-label={t("settings_footer_logo")}
-          description={t("settings_footer_logo_hint")}
-          accept="image/*"
-          clearable
-          disabled={removeFooterLogo}
-          value={footerLogo}
-          onChange={setFooterLogo}
-          leftSection={<IconPhoto size={ICON_SIZE.md} stroke={ICON_STROKE} />}
-        />
       </Stack>
-
-      <Stack gap="xs">
-        <Text size="sm" c="dimmed">
-          {t("settings_text_style")}
-        </Text>
-        <Checkbox
-          label={t("settings_bold")}
-          checked={values.default_bold}
-          onChange={(event) => patch({ default_bold: event.currentTarget.checked })}
-        />
-        <Checkbox
-          label={t("settings_double_width")}
-          checked={values.default_double_width}
-          onChange={(event) =>
-            patch({ default_double_width: event.currentTarget.checked })
-          }
-        />
-      </Stack>
-
-      <Select
-        label={t("settings_align")}
-        value={values.default_align}
-        allowDeselect={false}
-        onChange={(value) => patch({ default_align: (value as Align) ?? "left" })}
-        data={[
-          { value: "left", label: t("align_left") },
-          { value: "center", label: t("align_center") },
-          { value: "right", label: t("align_right") },
-        ]}
-      />
-
-      <Divider my="xs" />
-
-      <Stack gap="xs">
-        <Text size="sm" fw={600}>
-          {t("settings_paper")}
-        </Text>
-        <SegmentedControl
-          fullWidth
-          value={PAPER_PRESETS.includes(values.paper_width_px)
-            ? String(values.paper_width_px)
-            : "custom"}
-          onChange={(next) =>
-            patch({
-              paper_width_px:
-                next === "custom" ? values.paper_width_px : Number(next),
-            })
-          }
-          data={[
-            { value: "576", label: t("paper_80mm") },
-            { value: "384", label: t("paper_58mm") },
-            { value: "custom", label: t("paper_custom") },
-          ]}
-        />
-        <NumberInput
-          label={t("paper_width_label")}
-          description={t("paper_width_hint")}
-          min={100}
-          max={2048}
-          value={values.paper_width_px}
-          onChange={(value) =>
-            patch({ paper_width_px: Number(value) || values.paper_width_px })
-          }
-        />
-        <Checkbox
-          label={t("settings_auto_cut")}
-          description={t("settings_auto_cut_hint")}
-          checked={values.auto_cut}
-          onChange={(event) => patch({ auto_cut: event.currentTarget.checked })}
-        />
-      </Stack>
-
-      <Divider my="xs" />
-
-      <Stack gap="xs">
-        <Text size="sm" fw={600}>
-          {t("settings_behaviour")}
-        </Text>
-        <Checkbox
-          label={t("settings_confirm_print")}
-          description={t("settings_confirm_print_hint")}
-          checked={values.confirm_before_print}
-          onChange={(event) =>
-            patch({ confirm_before_print: event.currentTarget.checked })
-          }
-        />
-        <Checkbox
-          label={t("settings_surprise_preview")}
-          description={t("settings_surprise_preview_hint")}
-          checked={values.surprise_preview}
-          onChange={(event) =>
-            patch({ surprise_preview: event.currentTarget.checked })
-          }
-        />
-        <NumberInput
-          label={t("settings_print_delay")}
-          description={t("settings_print_delay_hint")}
-          min={0}
-          max={60}
-          value={values.print_delay_seconds}
-          onChange={(value) => patch({ print_delay_seconds: Number(value) || 0 })}
-        />
-      </Stack>
-
-      <Divider my="xs" />
-
-      <Stack gap="xs">
-        <Text size="sm" fw={600}>
-          {t("settings_retention")}
-        </Text>
-        <Text size="sm" c="dimmed">
-          {t("settings_retention_hint")}
-        </Text>
-        <NumberInput
-          label={t("settings_retention_items")}
-          description={t("settings_retention_zero")}
-          min={0}
-          value={values.retention_max_items}
-          onChange={(value) => patch({ retention_max_items: Number(value) || 0 })}
-        />
-        <NumberInput
-          label={t("settings_retention_age")}
-          description={t("settings_retention_zero")}
-          min={0}
-          value={values.retention_max_age_days}
-          onChange={(value) =>
-            patch({ retention_max_age_days: Number(value) || 0 })
-          }
-        />
-      </Stack>
-
-      <Group justify="flex-end">
-        <PrimaryButton
-          onClick={save}
-          loading={busy}
-          icon={<IconDeviceFloppy size={ICON_SIZE.md} stroke={ICON_STROKE} />}
-        >
-          {t("save_settings")}
-        </PrimaryButton>
-      </Group>
-
-      <Divider my="xs" />
-
-      <SettingsPreview refreshKey={previewKey} />
-
-      <Divider my="xs" />
-
-      <ContentManager />
-
-      <Divider my="xs" />
-
-      <AboutSection />
-
-      <Divider my="xs" />
-
-      <ResetDataSection />
-    </Stack>
+    </Tabs>
   );
 }
 
