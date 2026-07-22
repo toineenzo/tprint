@@ -108,6 +108,26 @@ exist. Reset the checkbox alongside the form on success. Names come from
 `deriveName`/`deriveFileName` in `src/hooks/useSaveAsSnippet.ts` — the checkbox
 never prompts for one.
 
+## Queue vs Scheduled
+
+Two cards in `src/components/queue/`, deliberately not one list:
+
+- `QueueCard` — manual jobs, and the **only** place "Run queue now" lives.
+- `ScheduledCard` — jobs that fire on their own, sorted by next run, with a
+  live clock and per-item countdowns.
+
+Which list a job belongs in comes from the server's `job.scheduled` flag.
+**Don't re-derive it** from `run_at`/`recurrence` here — the split has to match
+`run_manual_queue()`'s `WHERE` clause exactly, or the UI starts promising
+something the backend won't do.
+
+Times from the API are naive *local* strings. Parse them with
+`parseNaiveDateTime` from `src/dates.ts`, never `new Date(string)` — see the
+scheduling note in `../CLAUDE.md` for why that silently shifts by the UTC
+offset. `useNow()` drives the clock and countdowns on a 1s tick; that's
+separate from `usePolled`, so a moving countdown doesn't mean hammering the
+API sixty times a minute.
+
 ## Strings
 
 Never hardcode user-facing text. `app/i18n.py` stays the single source of
@@ -148,6 +168,17 @@ Modals don't render their children while closed (no `keepMounted`), so form
 state resets on each open for free. Where the *reopened* content must reflect
 the last save rather than the server's original seed — `SettingsModal` — keep
 that value in the always-mounted wrapper and pass it down.
+
+## Motion
+
+There is one animation in the app: `src/flight.ts` flies a small ghost from the
+button you pressed to the panel the item landed in after a print or queue.
+
+Two rules if you touch it. **Respect `prefers-reduced-motion`** — check it in
+JS *and* keep the CSS guard, and prefer degrading (the destination still
+pulses) over doing nothing at all. And **never let decoration break a print**:
+the ghost is appended to `<body>`, so it is pointer-transparent, cleaned up by
+both a promise and a timeout, and every failure path is a silent no-op.
 
 ## Feedback
 

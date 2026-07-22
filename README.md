@@ -24,23 +24,69 @@ any particular platform beyond Docker (or a plain Python environment).
   it. Saved checklists and calendars keep their structure, so re-printing one
   reproduces the original receipt exactly — due dates, list title and the
   one-receipt/separate-receipts choice included.
-- **Surprise me**: a bundled, curated (not API-dependent) list of jokes,
-  recipes, and fortunes — in English or Dutch.
+- **Surprise me**: a bundled, curated list of jokes, recipes, and fortunes in
+  English and Dutch — **editable from Settings**, and recipes can be filtered
+  by category (breakfast, lunch, dinner, dessert, snack, drink; two of each
+  ship in both languages). Add, edit and delete entries
+  per language; your changes are stored with your data, so they survive app
+  updates. Deliberately no external API: see **Why no content API** below.
+- **Composer**: build one receipt out of several pieces — text blocks, images,
+  PDF pages and QR/barcodes together on a single canvas, dragged into place.
+  Two ways to print it: **Canvas** prints exactly as arranged (text becomes part
+  of the image), **Flow** prints the items top to bottom using the printer's own
+  crisp text. A composition can be saved as a reusable **template** and reopened
+  later, not just reprinted.
+- **Image editing**: uploads land on a receipt-width canvas you can arrange
+  before printing — **scale**, **crop**, **rotate** in 90° steps, **draw** on
+  freehand in black or two greys, and **position** items by hand. A **grid**
+  mode arranges several at once with configurable items-per-row and spacing
+  (one per row by default, so images simply stack). PDF pages can be dropped in
+  alongside images — page 1 by default, with a page selector per item. What you
+  see on the canvas is exactly what prints.
+- **QR codes and barcodes**: paste a link, an ID or any text and print it as a
+  scannable QR code, or as a barcode in one of eight symbologies (code128 by
+  default, which accepts any text).
+- **Formatted text**: an optional per-line formatting mode for text prints —
+  bold, italic, underline, three heading sizes, alignment, and black / dark
+  grey / light grey shading. Greys are dithered, since thermal printers are
+  one-bit. Leave formatting off and text prints with the printer's own crisp
+  font exactly as before.
 - **Task/checklists**: build a list of items with optional due dates, print
-  as one combined receipt or as separate torn-off receipts per item.
-- **Calendar import**: upload an `.ics` file, print all events as one
-  agenda or as separate receipts per event.
-- **Print queue & scheduling**: queue a print instead of firing it
-  immediately, run the queue manually whenever you like, schedule it for a
-  specific date/time, or make it recurring (daily/weekly/monthly at a set
-  time). A big print already in progress can be canceled mid-transfer.
+  as one combined receipt or as separate torn-off receipts per item. **Paste a
+  multi-line list and it splits into one task per line** (leading `-` or `*`
+  bullets are stripped).
+- **Calendar import**: upload an `.ics` file and print it as one agenda, as
+  **one consolidated receipt per day**, or as separate receipts per event.
+  Optionally print a **week or month overview grid** first, with a dot on every
+  day that has an event, and the events listed underneath. Per-day receipts can
+  print **upright or sideways** — turn a day's plan a quarter turn and pin it to
+  the wall as part of a weekly set.
+- **Queue and Scheduled, kept separate**: the **Queue** holds prints that wait
+  for you to press "Run queue now". **Scheduled** holds prints that fire on
+  their own — either once at a date and time, or on a repeating rule like
+  *every Wednesday at 08:00* or *Mon/Wed/Fri at 07:30*. Running the queue never
+  touches scheduled prints. The Scheduled list is ordered by what's coming up
+  next and counts down to each one.
+- **Cancel mid-print**: a big print already in progress can be canceled
+  mid-transfer.
+- **Visible feedback**: printing or queueing animates a small marker from the
+  button you pressed into the panel the item landed in — the history sidebar
+  for a print, the queue for a queued job — so the action feels connected
+  rather than a list silently changing. Honours your system's reduced-motion
+  setting: nothing flies, the destination just highlights.
 - **Print history**: a sidebar showing what's been printed recently, with a
   timestamp and a text/image preview of each job — including ones fired by
   the queue/schedule while you weren't looking.
-- **Printer settings**: a configurable header/footer "frame" (text and/or a
-  logo image, with a `{datetime}` placeholder) applied to every receipt, plus
-  default text style (bold/double-width/alignment) — all editable from the
-  gear icon in the web UI instead of the printer's own paper self-test menu.
+- **Printer settings**: a configurable header/footer "frame" (text and/or an
+  image at the top *and* bottom, with a `{datetime}` placeholder) applied to
+  every receipt, plus default text style, **paper size** (80mm/58mm/custom),
+  auto-cut, and a live preview showing exactly what your settings produce — all
+  from the gear icon instead of the printer's own paper self-test menu.
+- **Confirm before printing** (optional): shows a rendered preview of the
+  receipt and asks before anything is sent.
+- **Retention**: cap how many history entries and finished queue jobs are kept,
+  and/or drop them after a number of days. Waiting and scheduled prints are
+  never removed.
 - **Localization**: UI and surprise-me content available in English or Dutch,
   switchable per browser (cookie-based, no account needed). Set
   `DEFAULT_LANGUAGE` to pick which one new visitors get.
@@ -172,7 +218,7 @@ If the page loads blank, the frontend hasn't been built yet — run
 | `PRINT_API_TOKEN` | _(empty)_ | Optional bearer token required on `/print/*` and `/snippets/*` for callers without a browser session (n8n, Home Assistant). Independent of `AUTH_ENABLED`. |
 | `PRINTER_BACKEND` | `file` | `file` for real hardware, `dummy` for local development/testing without a printer attached. |
 | `PRINTER_DEVICE` | `/dev/usb/lp0` | Device node the app writes ESC/POS bytes to. |
-| `PRINTER_WIDTH_PX` | `576` | Print width in pixels (matches a typical 80mm-roll ESC/POS printer at 180dpi; adjust for other paper widths). |
+| `PRINTER_WIDTH_PX` | `576` | *Initial* print width in dots, used until a paper size is chosen in Settings — after that the stored setting wins. 576 suits a typical 80mm roll; 384 a 58mm one. |
 | `DATA_DIR` | `/data` | Where the SQLite DB, saved snippet images, and settings logo live — mount a volume here. |
 | `HOST_PORT` | `8000` | Host-side port for `docker-compose.yml`, in case 8000 is already taken on your Docker host. |
 
@@ -262,6 +308,43 @@ the entire print history, anything queued, and these printer settings
 for confirmation first, and there is **no undo and no backup**: if you want to
 keep the data, copy your `DATA_DIR` volume before pressing it.
 
+## Why no content API
+
+The jokes, recipes and fortunes are bundled and editable in-app rather than
+fetched from a public API. That was a deliberate choice after surveying the
+options in July 2026 (full notes in `docs/`):
+
+- **No free API in any category serves Dutch**, so switching would have
+  regressed half the app's content.
+- **The well-known options keep dying.** `quotable.io`'s domain no longer
+  resolves; `forismatic` returns 522; RecipePuppy is a 404; `type.fit` still
+  answers but now returns 5 quotes instead of ~1600.
+- **Recipe APIs don't fit receipts.** A random TheMealDB meal wraps to a median
+  of ~37 lines — roughly 16cm of paper, up to 28cm.
+- **The terms rule out offline use.** Spoonacular's free tier caps caching at
+  one hour, after which cached data must be deleted; Edamam dropped its free
+  tier and returns no cooking instructions on affordable plans.
+
+The app therefore makes no outbound calls and works with no internet at all.
+If you want more variety, import a dataset into Settings once rather than
+taking on a runtime dependency.
+
+## Licence
+
+tprint is released under the **GNU Affero General Public License v3.0 or
+later** (see `LICENSE`). The same information is shown in **Settings → About**,
+along with the libraries it's built on.
+
+It is AGPL rather than a permissive licence for one concrete reason: tprint
+renders PDFs with [PyMuPDF](https://pymupdf.readthedocs.io/), which is itself
+AGPL-3.0. Linking it means the combined work must be AGPL-3.0 too, so MIT was
+not available. Every other dependency, in both the Python and JavaScript trees,
+is MIT/BSD/Apache/ISC.
+
+Practical consequence worth knowing if you fork this: under AGPL §13, if you
+run a **modified** version and let other people reach it over a network, you
+have to offer those users its source.
+
 ## REST API
 
 All endpoints below require either a logged-in browser session or, if
@@ -281,8 +364,13 @@ everything else.)
 | `POST /print/image` | multipart `file` | Print an image. |
 | `POST /print/pdf` | multipart `file` | Rasterize and print each PDF page. |
 | `POST /print/random` | `{"kind": "joke"\|"recipe"\|"fortune", "lang": "en"\|"nl"}` (both optional) | Print a surprise. `lang` defaults to the caller's `lang` cookie, then English. |
+| `POST /print/ics` | multipart `file`, `mode` (`single`\|`day`\|`separate`), `overview` (`none`\|`week`\|`month`), `orientation` (`vertical`\|`horizontal`) | Print a calendar. `day` consolidates each day into one receipt; `orientation` applies to those day receipts. |
+| `POST /print/composition` | multipart `payload` (JSON: `parts`, optional `layout`) + `files` | Print several items as one job. `parts` is an ordered list of `{"type":"text","blocks":[…]}`, `{"type":"image","file_index":N}` and `{"type":"code","data":…}`. Text prints as real printer text where the styling allows. |
+| `POST /print/code-image` | multipart `data`, `format`, `symbology` | A bare QR/barcode PNG with no receipt frame — used by the composer. |
+| `POST /print/pdf-page` | multipart `file`, `page` (1-based, clamped) | One PDF page as a PNG, for the image editor. Page count is returned in the `X-Page-Count` header. |
+| `POST /print/code` | `{"data": "...", "format": "qr"\|"barcode", "symbology": "code128"}` | Print a QR code or barcode. Rejects data that doesn't fit the symbology with a specific message. |
+| `POST /print/richtext` | `{"blocks": [{"text", "level", "bold", "italic", "underline", "tint", "align"}]}` | Print styled text. `level` 0-3, `tint` `black`\|`dark`\|`light`. |
 | `POST /print/checklist` | `{"title": "...", "items": [{"text": "...", "due": "2026-01-01"}], "mode": "single"\|"separate"}` | Print a task/checklist. |
-| `POST /print/ics` | multipart `file` (.ics), form field `mode` (`single`\|`separate`) | Print calendar events from an ICS file. |
 | `GET /snippets` | — | List saved snippets. |
 | `GET /snippets/{id}` | — | Get a single snippet (name, kind, text, file list). |
 | `POST /snippets` | multipart `name`, `kind` (`text`\|`image`\|`pdf`\|`checklist`\|`ics`), plus `text_content` (text), one-or-more `files` (image/pdf/ics), `payload` JSON (checklist), `mode` (ics) | Save a snippet. |
@@ -291,21 +379,47 @@ everything else.)
 | `POST /snippets/{id}/print` | — | Print a saved snippet. |
 | `GET /history` | — | Recent print history (kind, preview text, has-image flag, timestamp). |
 | `GET /history/{id}/image` | — | Thumbnail image for a history entry. |
-| `GET /queue` | — | List queued/scheduled/recurring jobs and their status. |
-| `POST /queue/run` | — | Run every job that's queued with no scheduled time. |
+| `GET /queue` | — | List queued/scheduled/recurring jobs and their status. Each job carries `scheduled` (false = waits for `/queue/run`, true = fires on its own) and `recurrence_days`. |
+| `POST /queue/run` | — | Run the **manual queue only** — jobs with no `run_at` and no `recurrence`. Scheduled and recurring jobs are never pulled forward by this. |
 | `DELETE /queue/{id}` | — | Cancel a job that hasn't started yet. |
 | `GET /queue/current` | — | What's printing right now, if anything. |
 | `POST /queue/cancel-current` | — | Abort whatever's currently printing (works mid-transfer on a big job). |
 | `GET /api/settings` | — | Current header/footer/logo/text-style settings. |
-| `POST /api/settings` | multipart `header_text`, `footer_text`, `default_align`, `default_bold`, `default_double_width`, `remove_logo`, `logo` | Replace the printer settings. Sends every field — omitted fields reset to their default. |
+| `POST /api/settings` | multipart `header_text`, `footer_text`, `default_align`, `default_bold`, `default_double_width`, `remove_logo`, `logo`, `footer_logo`, `remove_footer_logo`, `paper_width_px`, `auto_cut`, `confirm_before_print`, `surprise_preview`, `print_delay_seconds`, `retention_max_items`, `retention_max_age_days` | Replace the printer settings. Sends every field — omitted fields reset to their default. |
+| `GET /api/settings/preview` | — | PNG of a sample receipt as the current settings would print it. |
+| `GET /api/settings/about` | — | Licence and the list of libraries tprint is built on. |
+| `GET /api/settings/footer-logo` | — | The configured footer image. |
+| `POST /print/preview` | multipart `kind` + the same fields the matching `/print/*` endpoint takes | PNG of what that job would print, without printing it. |
+| `GET /print/surprise/peek` | `?kind=` | Draw a joke/recipe/fortune **without** printing it. Print the drawn one by passing its `text` back to `POST /print/random`. |
+| `GET /api/content` | `?kind=&lang=` | List surprise-me entries, plus per-kind/language counts. |
+| `POST /api/content` | `{kind, lang, text}` or `{kind, lang, title, ingredients[], steps[]}` | Add an entry. |
+| `PUT /api/content/{id}` | same body minus `kind`/`lang` | Edit an entry. |
+| `DELETE /api/content/{id}` | — | Delete an entry. |
 | `POST /api/settings/reset` | — | **Destructive, no undo.** Deletes every snippet, all history, the queue and the printer settings, returning the app to a fresh install. Requires a browser session — see the note below. |
 
 `/print/*` and `/snippets/{id}/print` also accept `queue` (bool), `run_at`
-(ISO datetime), `recurrence` (`daily`\|`weekly`\|`monthly`), and
-`recurrence_time` (`HH:MM`) — set any of these instead of printing
-immediately to queue/schedule/repeat the job. `run_at` is interpreted as
-**naive local time** in the server's `TZ`, with no timezone conversion, and
-`recurrence_time` is required whenever `recurrence` is set.
+(ISO datetime), `recurrence` (`daily`\|`weekly`\|`monthly`),
+`recurrence_time` (`HH:MM`) and `recurrence_days` — set any of these instead
+of printing immediately to queue/schedule/repeat the job.
+
+- `run_at` is interpreted as **naive local time** in the server's `TZ`, with
+  no timezone conversion.
+- `recurrence_time` is required whenever `recurrence` is set.
+- `recurrence_days` picks *which* days a rule fires on: ISO weekdays `1`–`7`
+  (Mon–Sun) for `weekly`, days of the month `1`–`31` for `monthly`. Send it as
+  a JSON list (`[1,3,5]`) or a comma-separated string (`1,3,5`) — form fields
+  and query params can't express a list. Omit it and it's derived from the
+  start time, so `recurrence=weekly` alone still means "the same weekday every
+  week" exactly as it always did.
+- A monthly day the month doesn't have is **skipped, not clamped**: a rule for
+  the 31st prints in January and March, and not at all in February.
+
+```sh
+# Every Wednesday and Friday at 08:00
+curl -X POST http://localhost:8080/print/text \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Bin day","recurrence":"weekly","recurrence_time":"08:00","recurrence_days":[3,5]}'
+```
 
 ### Home Assistant
 
