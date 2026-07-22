@@ -1,7 +1,7 @@
 import { Modal } from "@mantine/core";
-import { useState } from "react";
 
 import { useBootstrap, useStrings } from "../../AppContext";
+import { useAppData } from "../../AppData";
 import type { PrinterSettings } from "../../api/types";
 import { SettingsForm } from "./SettingsForm";
 
@@ -9,9 +9,17 @@ const BLANK: PrinterSettings = {
   header_text: null,
   footer_text: null,
   has_logo: false,
+  has_footer_logo: false,
   default_align: "left",
   default_bold: false,
   default_double_width: false,
+  paper_width_px: 576,
+  auto_cut: true,
+  confirm_before_print: false,
+  surprise_preview: false,
+  print_delay_seconds: 0,
+  retention_max_items: 50,
+  retention_max_age_days: 0,
 };
 
 /**
@@ -31,7 +39,10 @@ export function SettingsModal({
 }) {
   const t = useStrings();
   const boot = useBootstrap();
-  const [saved, setSaved] = useState<PrinterSettings>(boot.settings ?? BLANK);
+  // Settings live in AppData rather than here, so saving one immediately
+  // changes how the print gate and the Surprise card behave without a reload.
+  const { settings, setSettings } = useAppData();
+  const saved = settings ?? boot.settings ?? BLANK;
 
   return (
     <Modal
@@ -40,7 +51,7 @@ export function SettingsModal({
       title={t("settings_title")}
       size="lg"
     >
-      <SettingsForm initial={saved} onSaved={setSaved} />
+      <SettingsForm initial={saved} onSaved={setSettings} />
     </Modal>
   );
 }

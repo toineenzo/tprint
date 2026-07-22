@@ -13,6 +13,7 @@ import { api } from "./api/client";
 import type {
   CurrentPrint,
   HistoryEntry,
+  PrinterSettings,
   QueueJob,
   Snippet,
 } from "./api/types";
@@ -22,6 +23,13 @@ type AppDataValue = {
   history: HistoryEntry[];
   queue: QueueJob[];
   current: CurrentPrint;
+  /**
+   * Shared so the print gate and the Surprise card react to a settings change
+   * immediately. Reading these from the bootstrap payload instead would leave
+   * them stale the moment the settings modal saves.
+   */
+  settings: PrinterSettings | null;
+  setSettings: (next: PrinterSettings) => void;
   refreshSnippets: () => Promise<void>;
   /** Re-read everything a print can affect: queue, history, what's printing. */
   refreshAll: () => Promise<void>;
@@ -40,6 +48,9 @@ const AppDataContext = createContext<AppDataValue | null>(null);
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const boot = useBootstrap();
   const [snippets, setSnippets] = useState<Snippet[]>(boot.snippets ?? []);
+  const [settings, setSettings] = useState<PrinterSettings | null>(
+    boot.settings ?? null,
+  );
 
   const history = usePolled<HistoryEntry[]>("/history", boot.history ?? []);
   const queue = usePolled<QueueJob[]>("/queue", []);
@@ -63,6 +74,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       history: history.data,
       queue: queue.data,
       current: current.data,
+      settings,
+      setSettings,
       refreshSnippets,
       refreshAll,
     }),
@@ -71,6 +84,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       history.data,
       queue.data,
       current.data,
+      settings,
       refreshSnippets,
       refreshAll,
     ],

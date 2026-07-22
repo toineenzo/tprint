@@ -29,27 +29,42 @@ def add_entry(kind: str, preview_text: str | None = None, preview_image: Image.I
 
 
 def _prune(conn) -> None:
-    stale = conn.execute(
-        """
-        SELECT preview_image_path FROM print_history WHERE id NOT IN (
-            SELECT id FROM print_history ORDER BY created_at DESC, id DESC LIMIT ?
+    """Apply the configured retention rules, deleting thumbnails as it goes.
+
+    Both rules are optional and independent: an entry is dropped if it falls
+    outside the item cap *or* is older than the age limit. 0 disables either
+    one, so retention can be turned off entirely without a separate flag.
+    """
+    from app import settings as settings_store
+
+    current = settings_store.get_settings()
+    max_items = int(current["retention_max_items"])
+    max_age_days = int(current["retention_max_age_days"])
+
+    conditions, params = [], []
+    if max_items > 0:
+        conditions.append(
+            "id NOT IN (SELECT id FROM print_history "
+            "ORDER BY created_at DESC, id DESC LIMIT ?)"
         )
-        """,
-        (HISTORY_LIMIT,),
+        params.append(max_items)
+    if max_age_days > 0:
+        # created_at is SQLite's own UTC datetime('now'), so compare in UTC.
+        conditions.append("created_at < datetime('now', ?)")
+        params.append(f"-{max_age_days} days")
+    if not conditions:
+        return
+
+    where = " OR ".join(conditions)
+    stale = conn.execute(
+        f"SELECT preview_image_path FROM print_history WHERE {where}", params
     ).fetchall()
     for row in stale:
         if row["preview_image_path"]:
             path = os.path.join(config.HISTORY_THUMB_DIR, row["preview_image_path"])
             if os.path.exists(path):
                 os.remove(path)
-    conn.execute(
-        """
-        DELETE FROM print_history WHERE id NOT IN (
-            SELECT id FROM print_history ORDER BY created_at DESC, id DESC LIMIT ?
-        )
-        """,
-        (HISTORY_LIMIT,),
-    )
+    conn.execute(f"DELETE FROM print_history WHERE {where}", params)
 
 
 def list_recent(limit: int = HISTORY_LIMIT) -> list[dict]:
