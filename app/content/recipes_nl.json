@@ -1,77 +1,177 @@
 [
   {
-    "title": "Pannenkoeken met 2 ingrediënten",
-    "ingredients": ["2 rijpe bananen", "2 eieren"],
+    "title": "Wentelteefjes",
+    "category": "breakfast",
+    "ingredients": [
+      "4 sneetjes oud brood",
+      "2 eieren",
+      "100ml melk",
+      "Kaneel en suiker"
+    ],
     "steps": [
-      "Prak de bananen goed fijn in een kom.",
-      "Klop de eieren erdoor tot een glad beslag.",
-      "Bak kleine lepels beslag in een licht ingevette pan, 2 min per kant."
+      "Klop de eieren los met de melk en kaneel.",
+      "Laat het brood even goed weken.",
+      "Bak goudbruin in boter en bestrooi met suiker."
     ]
   },
   {
-    "title": "Snelle guacamole",
-    "ingredients": ["2 rijpe avocado's", "1/2 limoen, sap", "Snufje zout", "1 el gehakte ui (optioneel)"],
+    "title": "Havermout met appel",
+    "category": "breakfast",
+    "ingredients": [
+      "50g havermout",
+      "150ml melk",
+      "1 appel",
+      "Kaneel"
+    ],
     "steps": [
-      "Prak de avocado's fijn in een kom.",
-      "Roer het limoensap en zout erdoor.",
-      "Voeg de ui toe indien gewenst, meng en serveer."
+      "Kook de havermout met de melk in 5 minuten gaar.",
+      "Rasp de appel erdoor.",
+      "Bestrooi met kaneel."
     ]
   },
   {
-    "title": "Knoflook-botersaus met pasta in 5 minuten",
-    "ingredients": ["200g pasta", "2 el boter", "2 tenen knoflook, fijngehakt", "Parmezaan, zout, peper"],
+    "title": "Broodje gezond",
+    "category": "lunch",
+    "ingredients": [
+      "2 sneetjes brood",
+      "Kaas",
+      "Ham",
+      "Sla, tomaat en komkommer"
+    ],
     "steps": [
-      "Kook de pasta beetgaar, bewaar 1/4 kop pastawater.",
-      "Smelt de boter en bak de knoflook 1 minuut tot het geurt.",
-      "Meng de pasta met de knoflookboter en een scheutje pastawater.",
-      "Werk af met parmezaan, zout en peper."
+      "Besmeer het brood met boter.",
+      "Beleg met kaas, ham en groente.",
+      "Snijd doormidden en eet met de hand."
     ]
   },
   {
-    "title": "Klassiek roerei",
-    "ingredients": ["3 eieren", "1 el melk", "Boter", "Zout en peper"],
+    "title": "Tosti ham-kaas",
+    "category": "lunch",
+    "ingredients": [
+      "2 sneetjes brood",
+      "1 plak ham",
+      "2 plakken kaas",
+      "Boter"
+    ],
     "steps": [
-      "Klop de eieren los met melk, zout en peper.",
-      "Smelt boter in een pan op laag-middelhoog vuur.",
-      "Voeg de eieren toe en roer rustig tot ze net gestold zijn.",
-      "Haal van het vuur terwijl het nog iets zacht is."
+      "Beleg een sneetje met kaas, ham en nog kaas.",
+      "Boter de buitenkant van beide sneetjes.",
+      "Bak in het tosti-ijzer tot goudbruin."
     ]
   },
   {
-    "title": "Honing-mosterddressing",
-    "ingredients": ["2 el honing", "2 el dijonmosterd", "1 el olijfolie", "1 el azijn"],
+    "title": "Stamppot boerenkool",
+    "category": "dinner",
+    "ingredients": [
+      "1kg aardappelen",
+      "400g boerenkool",
+      "1 rookworst",
+      "Scheutje melk"
+    ],
     "steps": [
-      "Klop alle ingrediënten glad door elkaar.",
-      "Pas de verhouding honing/mosterd aan naar smaak.",
-      "Bewaar maximaal een week in de koelkast."
+      "Kook de aardappelen met de boerenkool in 20 minuten gaar.",
+      "Verwarm de rookworst mee boven de pan.",
+      "Stamp alles fijn met melk, boter en peper."
     ]
   },
   {
-    "title": "Simpele tomatenbruschetta",
-    "ingredients": ["2 tomaten, in blokjes", "1 teen knoflook, fijngehakt", "Basilicum, olijfolie, zout", "Geroosterd brood"],
+    "title": "Hollandse groentesoep",
+    "category": "dinner",
+    "ingredients": [
+      "1L bouillon",
+      "1 winterpeen",
+      "1 prei",
+      "Soepballetjes en vermicelli"
+    ],
     "steps": [
-      "Meng tomaat, knoflook, basilicum, olijfolie en zout in een kom.",
-      "Laat 10 minuten staan zodat de smaken zich mengen.",
-      "Schep op geroosterd brood en serveer."
+      "Breng de bouillon aan de kook.",
+      "Voeg de gesneden groenten toe en kook 10 minuten.",
+      "Doe de balletjes en vermicelli erbij, nog 5 minuten."
     ]
   },
   {
-    "title": "Nasi uit één pan",
-    "ingredients": ["2 kopjes gekookte rijst (van gisteren)", "2 eieren", "1 kop gemengde groente", "2 el sojasaus"],
+    "title": "Vlaflip",
+    "category": "dessert",
+    "ingredients": [
+      "300ml vanillevla",
+      "150ml yoghurt",
+      "2 el limonadesiroop"
+    ],
     "steps": [
-      "Roerbak de eieren in een hete pan, zet apart.",
-      "Roerbak de groente 2-3 minuten.",
-      "Voeg de rijst toe, klontjes losmaken, 3-4 minuten bakken.",
-      "Roer de eieren en sojasaus erdoor."
+      "Schenk de vla in een glas.",
+      "Roer de siroop door de yoghurt.",
+      "Schep het yoghurtmengsel er bovenop."
     ]
   },
   {
-    "title": "No-bake energieballetjes",
-    "ingredients": ["1 kop havermout", "1/2 kop pindakaas", "1/3 kop honing", "Chocoladeschilfers (optioneel)"],
+    "title": "Griesmeelpudding",
+    "category": "dessert",
+    "ingredients": [
+      "500ml melk",
+      "60g griesmeel",
+      "40g suiker",
+      "Bessensap"
+    ],
     "steps": [
-      "Meng alle ingrediënten in een kom tot een samenhangend geheel.",
-      "Rol er kleine balletjes van.",
-      "Laat minstens 30 minuten opstijven in de koelkast."
+      "Breng de melk met suiker aan de kook.",
+      "Strooi het griesmeel erbij en roer 5 minuten.",
+      "Laat opstijven in een vorm en serveer met bessensap."
+    ]
+  },
+  {
+    "title": "Poffertjes uit de pan",
+    "category": "snack",
+    "ingredients": [
+      "150g boekweitmeel",
+      "250ml lauwe melk",
+      "1 ei",
+      "Boter en poedersuiker"
+    ],
+    "steps": [
+      "Klop meel, melk en ei tot een glad beslag.",
+      "Bak kleine bolletjes in ruim boter.",
+      "Keer ze om en bestrooi met poedersuiker."
+    ]
+  },
+  {
+    "title": "Kaasblokjes met mosterd",
+    "category": "snack",
+    "ingredients": [
+      "200g belegen kaas",
+      "Grove mosterd"
+    ],
+    "steps": [
+      "Snijd de kaas in blokjes.",
+      "Zet er een bakje mosterd naast.",
+      "Prik op met cocktailprikkers."
+    ]
+  },
+  {
+    "title": "Anijsmelk",
+    "category": "drink",
+    "ingredients": [
+      "500ml melk",
+      "2 el anijsblokjes",
+      "Snufje suiker"
+    ],
+    "steps": [
+      "Verwarm de melk langzaam.",
+      "Los de anijsblokjes al roerend op.",
+      "Niet laten koken; direct warm schenken."
+    ]
+  },
+  {
+    "title": "Warme chocolademelk",
+    "category": "drink",
+    "ingredients": [
+      "250ml melk",
+      "30g pure chocolade",
+      "Slagroom"
+    ],
+    "steps": [
+      "Verwarm de melk zonder te koken.",
+      "Klop de chocolade erdoor tot hij smelt.",
+      "Werk af met een toef slagroom."
     ]
   }
 ]

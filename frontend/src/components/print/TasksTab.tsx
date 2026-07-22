@@ -7,8 +7,8 @@ import { useStrings } from "../../AppContext";
 import { api } from "../../api/client";
 import type { PrintMode, PrintResponse } from "../../api/types";
 import { toDateOnly } from "../../dates";
-import { usePrint } from "../../hooks/usePrint";
 import { deriveName, useSaveAsSnippet } from "../../hooks/useSaveAsSnippet";
+import { usePrintGate } from "./PrintGate";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
 import { SecondaryButton } from "../ui/Buttons";
 import { IconActionButton } from "../ui/IconActionButton";
@@ -27,13 +27,35 @@ export function TasksTab() {
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [saveAsSnippet, setSaveAsSnippet] = useState(false);
   const options = useQueueOptions();
-  const { print, busy } = usePrint();
+  const { runPrint, busy } = usePrintGate();
   const saveSnippet = useSaveAsSnippet();
 
   const patchRow = (id: number, patch: Partial<Row>) =>
     setRows((current) =>
       current.map((row) => (row.id === id ? { ...row, ...patch } : row)),
     );
+
+  /**
+   * Pasting a multi-line list fills one task per line rather than dropping the
+   * whole block into a single field. Handled on paste (not on change) so the
+   * clipboard text is available before the input collapses the newlines, and
+   * so typing is never second-guessed.
+   */
+  const pasteRows = (id: number, clipboard: string): boolean => {
+    const lines = clipboard
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^\s*[-*\u2022]\s*/, "").trim())
+      .filter(Boolean);
+    if (lines.length < 2) return false;
+
+    setRows((current) => {
+      const index = current.findIndex((row) => row.id === id);
+      const added = lines.map((text) => ({ ...emptyRow(), text }));
+      // Replace the row pasted into; keep anything already typed elsewhere.
+      return [...current.slice(0, index), ...added, ...current.slice(index + 1)];
+    });
+    return true;
+  };
 
   const items = rows
     .filter((row) => row.text.trim())
@@ -49,7 +71,8 @@ export function TasksTab() {
       mode,
       ...(queue ? options.toPayload() : {}),
     };
-    const ok = await print(async () => {
+    const ok = await runPrint(
+      async () => {
       if (saveAsSnippet) {
         // The structure, not a rendering of it — a saved checklist reprints
         // through print_checklist with its due dates and mode intact.
@@ -64,8 +87,14 @@ export function TasksTab() {
           },
         );
       }
-      return api.postJson<PrintResponse>("/print/checklist", body);
-    });
+        return api.postJson<PrintResponse>("/print/checklist", body);
+      },
+      {
+        kind: "checklist",
+        payload: JSON.stringify({ title: title.trim() || null, items, mode }),
+      },
+      { queued: queue },
+    );
     if (ok) {
       setTitle("");
       setRows([emptyRow()]);
@@ -91,6 +120,11 @@ export function TasksTab() {
               onChange={(event) =>
                 patchRow(row.id, { text: event.currentTarget.value })
               }
+              onPaste={(event) => {
+                if (pasteRows(row.id, event.clipboardData.getData("text"))) {
+                  event.preventDefault();
+                }
+              }}
               placeholder={t("task_placeholder")}
             />
             <DateInput
@@ -149,6 +183,7 @@ export function TasksTab() {
         onQueue={() => send(true)}
         saveAsSnippet={saveAsSnippet}
         onSaveAsSnippetChange={setSaveAsSnippet}
+        queueDisabled={!options.complete}
       />
     </Stack>
   );

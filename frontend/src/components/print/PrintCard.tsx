@@ -5,6 +5,7 @@ import {
   IconFileTypePdf,
   IconListCheck,
   IconPhoto,
+  IconQrcode,
   IconPrinter,
 } from "@tabler/icons-react";
 import { useState } from "react";
@@ -13,6 +14,7 @@ import { useStrings } from "../../AppContext";
 import type { StringKey } from "../../i18n/strings";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
 import { SectionCard } from "../ui/SectionCard";
+import { CodeTab } from "./CodeTab";
 import { FILE_TABS, FileTab } from "./FileTab";
 import { IcsTab } from "./IcsTab";
 import { TasksTab } from "./TasksTab";
@@ -20,10 +22,11 @@ import { TextTab } from "./TextTab";
 
 const TABS = [
   { value: "text", labelKey: "tab_text", icon: IconFileText },
-  { value: "image", labelKey: "tab_image", icon: IconPhoto },
+  { value: "image", labelKey: "tab_compose", icon: IconPhoto },
   { value: "pdf", labelKey: "tab_pdf", icon: IconFileTypePdf },
   { value: "tasks", labelKey: "tab_tasks", icon: IconListCheck },
   { value: "ics", labelKey: "tab_ics", icon: IconCalendarEvent },
+  { value: "code", labelKey: "tab_code", icon: IconQrcode },
 ] as const satisfies ReadonlyArray<{
   value: string;
   labelKey: StringKey;
@@ -77,6 +80,9 @@ export function PrintCard() {
         </Tabs.Panel>
         <Tabs.Panel value="ics">
           <IcsTab />
+        </Tabs.Panel>
+        <Tabs.Panel value="code">
+          <CodeTab />
         </Tabs.Panel>
       </Tabs>
     </SectionCard>

@@ -7,6 +7,9 @@ import {
   IconListCheck,
   IconPhoto,
   IconPrinter,
+  IconLayoutBoard,
+  IconQrcode,
+  IconTypography,
   type Icon,
 } from "@tabler/icons-react";
 import type { StringKey } from "../i18n/strings";
@@ -41,6 +44,9 @@ export const CONTENT_TYPES: Record<string, ContentTypeMeta> = {
   pdf: { icon: IconFileTypePdf, color: "red", labelKey: "kind_pdf" },
   checklist: { icon: IconListCheck, color: "lime", labelKey: "kind_checklist" },
   ics: { icon: IconCalendarEvent, color: "cyan", labelKey: "kind_ics" },
+  code: { icon: IconQrcode, color: "grape", labelKey: "kind_code" },
+  composition: { icon: IconLayoutBoard, color: "pink", labelKey: "kind_composition" },
+  richtext: { icon: IconTypography, color: "indigo", labelKey: "kind_richtext" },
   random: { icon: IconDice5, color: "orange", labelKey: "kind_random" },
   snippet: { icon: IconBookmark, color: "teal", labelKey: "kind_snippet" },
 };
