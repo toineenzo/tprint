@@ -3,10 +3,10 @@ import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import ValidationError
 
-from app import actions, auth, i18n, print_queue
+from app import actions, auth, export, i18n, print_queue
 from app import snippets as snippets_store
 from app.schemas import ChecklistPrintRequest, QueueOptions, queue_options_query
 
@@ -94,6 +94,34 @@ async def create_snippet(
             "kind must be 'text', 'image', 'pdf', 'checklist', 'ics', or 'composition'",
         )
     return {"id": snippet_id}
+
+
+@router.get("/{snippet_id}/pdf")
+def download_snippet_pdf(
+    snippet_id: int,
+    request: Request,
+    _: None = Depends(auth.require_api_auth),
+):
+    """The snippet as a PDF of what it would print — a page per receipt.
+
+    Same language resolution as printing it: a checklist renders a localized
+    "due" label, and a downloaded copy that disagrees with the printed one
+    would be worse than no download at all.
+    """
+    snippet = snippets_store.get_snippet(snippet_id)
+    if not snippet:
+        raise HTTPException(404, "snippet not found")
+
+    try:
+        data = export.snippet_pdf(snippet, i18n.from_request(request))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    return Response(
+        data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": export.content_disposition(snippet["name"])},
+    )
 
 
 @router.get("/{snippet_id}")

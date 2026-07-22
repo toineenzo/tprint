@@ -2,10 +2,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
-from PIL import Image
 from pydantic import ValidationError
 
-from app import actions, agenda, auth, codes, content, i18n, ics_import, preview, print_queue, printer, richtext
+from app import actions, agenda, auth, codes, content, export, i18n, ics_import, preview, print_queue, printer, richtext
 from app import settings
 from app import snippets as snippets_store
 from app.schemas import (
@@ -396,28 +395,20 @@ async def preview_job(
 
 
 def _snippet_content(snippet_id: Optional[int], lang: str):
-    """The same content a snippet would print, for preview purposes."""
+    """The first receipt a snippet would print, for preview purposes.
+
+    Shares `export.snippet_jobs` with the PDF download rather than dispatching
+    on kind a second time — that duplicate was already a receipt behind, with no
+    composition support and no idea the agenda had overview or day modes.
+    """
     snippet = snippets_store.get_snippet(snippet_id) if snippet_id else None
     if not snippet:
         raise HTTPException(404, "snippet not found")
 
-    if snippet["kind"] == "text":
-        return printer.text_content(snippet["text_content"] or "")
-    if snippet["kind"] == "image":
-        images = [Image.open(snippets_store.file_path(fn)) for fn in snippet["files"]]
-        return printer.images_content(images)
-    if snippet["kind"] == "pdf":
-        with open(snippets_store.file_path(snippet["files"][0]), "rb") as f:
-            return printer.images_content(printer._render_pdf_pages(f.read()))
-    if snippet["kind"] == "checklist":
-        data = snippet["payload"] or {}
-        items = data.get("items") or []
-        if data.get("mode") == "separate":
-            items = items[:1]
-        return printer.checklist_content(data.get("title"), items, lang)
-    if snippet["kind"] == "ics":
-        data = snippet["payload"] or {}
-        with open(snippets_store.file_path(snippet["files"][0]), "rb") as f:
-            events = ics_import.parse_ics(f.read())
-        return printer.ics_content(events[:1] if data.get("mode") == "separate" else events)
-    raise HTTPException(400, f"cannot preview snippet kind {snippet['kind']!r}")
+    try:
+        first = next(iter(export.snippet_jobs(snippet, lang)), None)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if first is None:
+        raise HTTPException(400, "this snippet has nothing to print")
+    return first[1]

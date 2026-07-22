@@ -24,6 +24,12 @@ any particular platform beyond Docker (or a plain Python environment).
   it. Saved checklists and calendars keep their structure, so re-printing one
   reproduces the original receipt exactly — due dates, list title and the
   one-receipt/separate-receipts choice included.
+- **Download a snippet as PDF**: the PDF icon on any snippet saves what that
+  snippet would print, at the receipt's real size (a 576-dot roll comes out
+  72mm wide). Snippets that print as several receipts become several pages —
+  a checklist in separate-receipts mode is one page per task, a calendar in
+  per-day mode one page per day, led by its overview grid. Useful for keeping
+  a copy, mailing one on, or printing it somewhere without a thermal printer.
 - **Surprise me**: a bundled, curated list of jokes, recipes, and fortunes in
   English and Dutch — **editable from Settings**, and recipes can be filtered
   by category (breakfast, lunch, dinner, dessert, snack, drink; two of each
@@ -376,6 +382,7 @@ everything else.)
 | `POST /snippets` | multipart `name`, `kind` (`text`\|`image`\|`pdf`\|`checklist`\|`ics`), plus `text_content` (text), one-or-more `files` (image/pdf/ics), `payload` JSON (checklist), `mode` (ics) | Save a snippet. |
 | `PUT /snippets/{id}` | multipart `name`, `text_content`, `add_files`, `remove_files` | Edit a snippet (fields used depend on its kind; `checklist` and `ics` accept `name` only). |
 | `DELETE /snippets/{id}` | — | Delete a snippet. |
+| `GET /snippets/{id}/pdf` | — | Download the snippet as a PDF of what it would print — one page per receipt, at the receipt's physical size. |
 | `POST /snippets/{id}/print` | — | Print a saved snippet. |
 | `GET /history` | — | Recent print history (kind, preview text, has-image flag, timestamp). |
 | `GET /history/{id}/image` | — | Thumbnail image for a history entry. |

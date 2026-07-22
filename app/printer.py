@@ -2,6 +2,7 @@ import io
 import os
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -383,13 +384,21 @@ def checklist_content(title: str | None, items: list[dict], lang: str = "en"):
     return content
 
 
-def print_checklist(title: str | None, items: list[dict], mode: str, lang: str = "en") -> None:
+def checklist_jobs(
+    title: str | None, items: list[dict], mode: str, lang: str = "en"
+) -> Iterator[tuple[str, object]]:
+    """Every receipt a checklist prints as — one per item in "separate" mode."""
     if mode == "separate":
         for item in items:
-            _print_job(checklist_content(title, [item], lang), label=item["text"][:60])
+            yield item["text"][:60], checklist_content(title, [item], lang)
         return
 
-    _print_job(checklist_content(title, items, lang), label=title or f"{len(items)} tasks")
+    yield title or f"{len(items)} tasks", checklist_content(title, items, lang)
+
+
+def print_checklist(title: str | None, items: list[dict], mode: str, lang: str = "en") -> None:
+    for label, content_fn in checklist_jobs(title, items, mode, lang):
+        _print_job(content_fn, label=label)
 
 
 def _event_lines(event: dict) -> list[str]:
@@ -467,40 +476,44 @@ def day_content(day, events: list[dict], horizontal: bool, width: int | None = N
     return content
 
 
-def print_ics_events(
+def ics_jobs(
     events: list[dict],
     mode: str,
     overview: str = "none",
     orientation: str = "vertical",
-) -> None:
-    """Print an imported calendar.
+) -> Iterator[tuple[str, object]]:
+    """Every receipt an imported calendar prints as.
 
     `mode` is one of:
       single    one agenda receipt with every event
       separate  one receipt per event
       day       one consolidated receipt per day
 
-    With an overview grid enabled it leads the agenda in `single` mode, and
-    prints as its own receipt ahead of the rest otherwise — there is no sensible
-    way to repeat a month grid on top of every per-day slip.
+    With an overview grid enabled it leads the agenda in `single` mode, and is
+    its own receipt ahead of the rest otherwise — there is no sensible way to
+    repeat a month grid on top of every per-day slip.
+
+    A generator rather than a list because `day_content` rasterizes a whole
+    landscape day up front: a year of them built eagerly would be hundreds of
+    megabytes of images held while the first one is still printing.
     """
     scope = overview if overview in ("week", "month") else None
 
     if mode == "day":
         if scope:
-            _print_job(overview_content(events, scope), label="agenda overview")
+            yield "agenda overview", overview_content(events, scope)
         for day, group in agenda.group_by_day(events):
-            _print_job(
+            yield (
+                agenda.day_title(day)[:60],
                 day_content(day, group, orientation == "horizontal"),
-                label=agenda.day_title(day)[:60],
             )
         return
 
     if mode == "separate":
         if scope:
-            _print_job(overview_content(events, scope), label="agenda overview")
+            yield "agenda overview", overview_content(events, scope)
         for event in events:
-            _print_job(ics_content([event]), label=event["summary"][:60])
+            yield event["summary"][:60], ics_content([event])
         return
 
     def content(p):
@@ -509,7 +522,17 @@ def print_ics_events(
             p.text("\n")
         ics_content(events)(p)
 
-    _print_job(content, label=f"{len(events)} events")
+    yield f"{len(events)} events", content
+
+
+def print_ics_events(
+    events: list[dict],
+    mode: str,
+    overview: str = "none",
+    orientation: str = "vertical",
+) -> None:
+    for label, content_fn in ics_jobs(events, mode, overview, orientation):
+        _print_job(content_fn, label=label)
 
 
 def image_from_upload(data: bytes) -> Image.Image:

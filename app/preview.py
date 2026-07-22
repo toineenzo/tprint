@@ -26,8 +26,20 @@ CHAR_WIDTH = 12
 LINE_HEIGHT = 24
 
 # A 60-page PDF would otherwise render a preview tens of thousands of pixels
-# tall. Past this the preview is truncated and says so.
+# tall. Past this the preview is truncated and says so. Passing `max_height=None`
+# opts out — the PDF export wants the whole receipt, however long it runs.
 MAX_HEIGHT = 4000
+
+# The dot density of the printers this targets. Embedding a page at this
+# resolution gives the PDF the *physical* size of the receipt — 576 dots comes
+# out 72mm wide — so it prints as a receipt-shaped strip rather than something
+# stretched to fill A4.
+DPI = 203
+
+# PDF caps a page at 200 inches, and a page metres long is unreadable anyway, so
+# a receipt longer than this is sliced across several pages. At 203dpi this is
+# roughly a metre of paper, which no single receipt should reach.
+MAX_PDF_PAGE_PX = DPI * 40
 
 PAPER = 255
 INK = 0
@@ -150,7 +162,9 @@ def _draw_line(
             draw.text((position[0] + 1, position[1]), char, font=font, fill=INK)
 
 
-def render(blocks: list[dict], width: int) -> Image.Image:
+def render(
+    blocks: list[dict], width: int, max_height: int | None = MAX_HEIGHT
+) -> Image.Image:
     """Draw recorded blocks onto a paper-coloured strip `width` dots across."""
     font = _font(LINE_HEIGHT - 6)
     double_font = _font(LINE_HEIGHT - 2)
@@ -175,8 +189,9 @@ def render(blocks: list[dict], width: int) -> Image.Image:
             laid_out.append(("cut", None, height, block, False))
             height += 10
 
-    truncated = height > MAX_HEIGHT
-    canvas = Image.new("L", (width, min(height + 8, MAX_HEIGHT)), PAPER)
+    limit = max_height or height + 8
+    truncated = height > limit
+    canvas = Image.new("L", (width, min(height + 8, limit)), PAPER)
     draw = ImageDraw.Draw(canvas)
 
     for kind, value, y, block, double in laid_out:
@@ -202,16 +217,43 @@ def render(blocks: list[dict], width: int) -> Image.Image:
     return canvas
 
 
-def render_job(content_fn, width: int | None = None) -> Image.Image:
+def render_job(
+    content_fn, width: int | None = None, max_height: int | None = MAX_HEIGHT
+) -> Image.Image:
     """Preview one job: frame it exactly as printing would, then draw it."""
     row = settings.get_settings()
     target = width or settings.paper_width_px()
     recorder = Recorder()
     printer.frame_job(content_fn, row, target)(recorder)
-    return render(recorder.blocks, target)
+    return render(recorder.blocks, target, max_height)
 
 
 def to_png(image: Image.Image) -> bytes:
     buffer = io.BytesIO()
     image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def to_pdf(images: list[Image.Image]) -> bytes:
+    """One PDF page per rendered receipt, at the receipt's own physical size.
+
+    Deliberately a raster rather than selectable text: these images come from
+    `Recorder`, which captured the real print path, so the PDF says exactly what
+    the paper would. Re-typesetting the same blocks into PDF text would be a
+    third layout engine to keep in step with the other two, and it still could
+    not use the printer's ROM font.
+    """
+    if not images:
+        raise ValueError("nothing to render")
+
+    pages: list[Image.Image] = []
+    for image in images:
+        for top in range(0, image.height, MAX_PDF_PAGE_PX):
+            bottom = min(top + MAX_PDF_PAGE_PX, image.height)
+            pages.append(image.crop((0, top, image.width, bottom)))
+
+    buffer = io.BytesIO()
+    pages[0].save(
+        buffer, "PDF", save_all=True, append_images=pages[1:], resolution=DPI
+    )
     return buffer.getvalue()

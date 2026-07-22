@@ -31,6 +31,27 @@ function errorMessage(body: unknown, status: number): string {
   return `Request failed (${status})`;
 }
 
+/**
+ * The name the server picked, out of a Content-Disposition header.
+ *
+ * `filename*` is read first because it's the one that survives accents — the
+ * plain `filename` is an ASCII-folded fallback (see `export.py`), so preferring
+ * it would throw away the real name on exactly the installs that need it.
+ */
+function filenameFrom(header: string | null): string | null {
+  if (!header) return null;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      // A malformed escape shouldn't cost the user their download.
+    }
+  }
+  const plain = /filename="([^"]+)"/i.exec(header);
+  return plain ? plain[1] : null;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
@@ -68,6 +89,32 @@ export const api = {
       throw new ApiError(errorMessage(parsed, res.status), res.status);
     }
     return res.blob();
+  },
+
+  /**
+   * Fetch a file and hand it to the browser as a download.
+   *
+   * Deliberately not a plain `<a href download>`: that navigates to whatever
+   * the server returns when the request fails, so a 404 replaces the app with
+   * a page of raw JSON. Going through fetch keeps a failure inside the app's
+   * own error handling, like every other action.
+   */
+  download: async (url: string, fallbackName: string): Promise<void> => {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const parsed = await res.json().catch(() => null);
+      throw new ApiError(errorMessage(parsed, res.status), res.status);
+    }
+    const href = URL.createObjectURL(await res.blob());
+    const link = document.createElement("a");
+    link.href = href;
+    link.download =
+      filenameFrom(res.headers.get("Content-Disposition")) ?? fallbackName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Deferred: revoking in the same tick has raced the download in Safari.
+    setTimeout(() => URL.revokeObjectURL(href), 0);
   },
 
   putForm: <T>(url: string, body: FormData) =>

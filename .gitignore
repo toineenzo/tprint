@@ -10,3 +10,6 @@ data/
 # stage builds it, and `npm run dev` regenerates it locally.
 node_modules/
 app/static/dist/
+
+# Local tool state (SQLite WAL, per-branch metadata)
+.tokensave/

@@ -30,7 +30,8 @@ app/
   schemas.py                  Shared pydantic request models + queue-option validation (see below)
   history.py                   Print history persistence + thumbnail generation
   settings.py                   Printer "settings" (frame, paper, behaviour, retention) — app-level only, see printer.py docstring
-  preview.py                     Recorder + PNG renderer — previews reuse the real print path
+  preview.py                     Recorder + PNG/PDF renderer — previews reuse the real print path
+  export.py                       Snippet -> the receipts it prints -> a PDF (one page each)
   codes.py                        QR / barcode -> PIL image (not escpos's native qr/barcode)
   richtext.py                      Styled lines -> PIL image (ESC/POS has no italic or grey)
   about.py                        Licence + library list shown in Settings > About
@@ -286,6 +287,35 @@ drift out of step. **If you add a content type, add a `*_content()` factory** in
 `printer.py` rather than building content inline, so preview and print keep
 sharing it. Anything a `content_fn` might call must exist on `Recorder`, or
 previewing that type raises.
+
+**Downloading a snippet as PDF is the preview renderer, not a new one.**
+`GET /snippets/{id}/pdf` records the job through that same `Recorder` and saves
+the rendered strip as a PDF page. It is deliberately a **raster, not selectable
+text**: re-typesetting the recorded blocks into PDF text would be a *third*
+layout engine to keep in step with the print path and the preview, and it still
+couldn't use the printer's ROM font. Pages are embedded at `preview.DPI` (203,
+the printers' actual dot density), so a page comes out the physical size of the
+receipt — 576 dots is 72mm — instead of stretched to fill A4.
+
+Two things follow from a receipt not being one page:
+
+- **`export.snippet_jobs()` yields every receipt a snippet prints**, so a
+  checklist in `separate` mode exports as one page per item and an agenda in
+  `day` mode as one page per day. It's a generator because `printer.ics_jobs`
+  is: a year of landscape days built eagerly is hundreds of megabytes of
+  bitmaps held while the first one is still printing.
+- **It is also what `/print/preview` uses for `kind=snippet`**, taking job
+  `[0]`. That replaced a second kind-dispatch in `routers/print.py` which had
+  already fallen a feature behind — it couldn't preview a composition at all
+  and didn't know the agenda had overview or orientation options. If you add a
+  snippet kind, teach `snippet_jobs` about it and both surfaces follow.
+
+`printer.checklist_jobs()` / `ics_jobs()` exist for the same reason: the
+mode-to-receipts split used to be spelled out inside `print_checklist` /
+`print_ics_events`, where the exporter couldn't reach it. Those functions are
+now loops over the job list, so there is one answer to "what does this print
+as" — verified byte-identical at `_send` across 23 mode/overview/orientation
+combinations when it was extracted.
 
 **Paper width is a setting, and `PRINTER_WIDTH_PX` is now only its default.**
 `settings.paper_width_px()` returns the stored value, falling back to the env
@@ -594,8 +624,9 @@ Anything that changes what the image contains still needs the local
   `FileTab`'s `resolve()` — the canvas needs nothing else. The tab passes
   `saveAsSnippet` state to `PrintActions` and saves inside its `usePrint`
   closure — if the new type should be snippet-able, it also needs a `kind`
-  branch in `POST /snippets`, a store `create_*_snippet()`, and a branch in
-  `actions.print_snippet()`.
+  branch in `POST /snippets`, a store `create_*_snippet()`, a branch in
+  `actions.print_snippet()`, and one in `export.snippet_jobs()` — the last of
+  which buys both the PDF download and the snippet preview at once.
 - **New setting**: add the column to the `settings` table in `db.py` **and to
   `_SETTINGS_COLUMNS`** so existing databases get it too (`CREATE TABLE IF NOT
   EXISTS` won't), read/write it in `settings.py` **and expose it in

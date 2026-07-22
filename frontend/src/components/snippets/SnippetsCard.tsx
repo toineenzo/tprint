@@ -2,6 +2,7 @@ import { Divider, Group, Stack, Text } from "@mantine/core";
 import {
   IconBookmark,
   IconEye,
+  IconFileTypePdf,
   IconPencil,
   IconPrinter,
   IconTrash,
@@ -35,6 +36,7 @@ function SnippetRow({
 }) {
   const t = useStrings();
   const { print, busy } = usePrint();
+  const { submit, busy: downloading } = useSubmit();
 
   return (
     <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
@@ -51,6 +53,22 @@ function SnippetRow({
         </IconActionButton>
         <IconActionButton label={t("edit")} onClick={onEdit}>
           <IconPencil size={ICON_SIZE.md} stroke={ICON_STROKE} />
+        </IconActionButton>
+        <IconActionButton
+          label={t("download_pdf")}
+          loading={downloading}
+          onClick={() =>
+            submit(
+              () =>
+                api.download(
+                  `/snippets/${snippet.id}/pdf`,
+                  `${snippet.name}.pdf`,
+                ),
+              "status_downloaded",
+            )
+          }
+        >
+          <IconFileTypePdf size={ICON_SIZE.md} stroke={ICON_STROKE} />
         </IconActionButton>
         <IconActionButton
           label={t("print")}
