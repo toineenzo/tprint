@@ -123,7 +123,11 @@ def prune_finished_jobs() -> None:
 
     current = settings_store.get_settings()
     if current["queue_auto_clear"]:
-        clear_finished()
+        # "all" on purpose, and it is the setting's whole promise: a finished
+        # scheduled print is as done as a finished queued one. The per-panel
+        # scopes exist for the two buttons, which act on what you are looking
+        # at — a setting has no panel to be looking at.
+        clear_finished("all")
         return
     max_items = int(current["retention_max_items"])
     max_age_days = int(current["retention_max_age_days"])
