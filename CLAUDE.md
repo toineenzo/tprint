@@ -435,6 +435,20 @@ weekday rules existed) gets them derived from the anchor, because "+7 days"
 already meant "the same weekday". So there is exactly one rule shape in the
 database and no legacy branch in the worker. Keep it that way.
 
+**The worker sleeps until the next job is due, not on a fixed tick.**
+`_seconds_until_next_due()` reads the earliest pending `run_at` and sleeps to
+it, capped at `POLL_SECONDS`; `enqueue` sets a `threading.Event` so a job
+created mid-wait is picked up at once rather than after the remainder of the
+sleep. Before this a job scheduled for 04:02:00 printed at 04:02:14, which
+became very visible once schedules could name seconds.
+
+**Stored timestamps are UTC; displayed ones are local.** `created_at` and
+`last_run_at` come from SQLite's `datetime('now')` (UTC) and retention compares
+against them in UTC, so they stay stored that way — but `history.to_local()`
+converts them in the public projections, because `run_at` is naive *local* and
+a history entry reading 02:02 beside a schedule counting 04:02 reads as a bug.
+`run_at` itself is never converted; parsing it as UTC would shift it.
+
 Scheduling uses naive local time throughout (the browser sends a naive local
 string and the server compares against `datetime.now()`) — there's no timezone
 conversion, so this only behaves correctly when the server's `TZ` matches the
