@@ -50,6 +50,11 @@ export function CropModal({
   const t = useStrings();
   const [url, setUrl] = useState<string | null>(previewUrl ?? null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  // Whether a drag is *in progress*. Separate from `drag`, which holds the box
+  // after the button is released: sharing one value meant every later pointer
+  // move kept resizing the finished box — including the move towards "Use
+  // selection", which is exactly when it has to stop.
+  const dragging = useRef(false);
   const imageRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
@@ -114,19 +119,29 @@ export function CropModal({
             style={{ position: "relative", touchAction: "none", userSelect: "none" }}
             onPointerDown={(event) => {
               event.currentTarget.setPointerCapture(event.pointerId);
+              dragging.current = true;
               const point = pointAt(event);
               setDrag({ x0: point.x, y0: point.y, x1: point.x, y1: point.y });
             }}
             onPointerMove={(event) => {
-              if (!drag) return;
+              if (!dragging.current) return;
               const point = pointAt(event);
               setDrag((current) =>
                 current ? { ...current, x1: point.x, y1: point.y } : current,
               );
             }}
-            onPointerUp={(event) =>
-              event.currentTarget.releasePointerCapture(event.pointerId)
-            }
+            onPointerUp={(event) => {
+              dragging.current = false;
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+            // A cancelled or lost pointer ends the drag too — otherwise it
+            // would silently resume on the next move with no button held.
+            onPointerCancel={() => {
+              dragging.current = false;
+            }}
+            onLostPointerCapture={() => {
+              dragging.current = false;
+            }}
           >
             <img
               ref={imageRef}
