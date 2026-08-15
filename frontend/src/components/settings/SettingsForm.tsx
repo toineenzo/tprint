@@ -243,7 +243,16 @@ export function SettingsForm({
       onChange={setTab}
       variant="pills"
     >
-      <Tabs.List mr={narrow ? 0 : "md"} mb={narrow ? "md" : 0}>
+      {/* The modal body is the scroll container, so the tab list sticks to the
+          top of it and only the panel scrolls away. `alignSelf` is what makes
+          that possible: a stretched flex child is as tall as the panel and has
+          nowhere to stick to. Narrow screens keep the list above the content,
+          where sticking it would cover the fields it scrolls over. */}
+      <Tabs.List
+        mr={narrow ? 0 : "md"}
+        mb={narrow ? "md" : 0}
+        style={narrow ? undefined : { position: "sticky", top: 0, alignSelf: "flex-start" }}
+      >
         <Tabs.Tab
           value="frame"
           leftSection={<IconLayoutBoardSplit size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
