@@ -1,5 +1,5 @@
 import { Divider, Group, Stack, Text } from "@mantine/core";
-import { IconPlayerPlay, IconStack2, IconTrash } from "@tabler/icons-react";
+import { IconPlayerPlay, IconStack2 } from "@tabler/icons-react";
 
 import { useStrings } from "../../AppContext";
 import { registerFlightTarget } from "../../flight";
@@ -10,6 +10,7 @@ import { ICON_SIZE, ICON_STROKE } from "../../theme";
 import { SecondaryButton } from "../ui/Buttons";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionCard } from "../ui/SectionCard";
+import { ClearFinishedButton } from "./ClearFinishedButton";
 import { JobRow } from "./jobDisplay";
 
 /**
@@ -30,9 +31,6 @@ export function QueueCard() {
   // the button acts on — enabling it for a list of nothing but DONE rows
   // invites a press that correctly does nothing.
   const waiting = manual.filter((job) => job.status === "pending");
-  // The clear endpoint drops every finished job, wherever it was listed, so
-  // the button lights up for a finished scheduled one too.
-  const finished = queue.filter((job) => job.status !== "pending" && job.status !== "running");
 
   return (
     <SectionCard
@@ -41,20 +39,7 @@ export function QueueCard() {
       icon={<IconStack2 size={ICON_SIZE.lg} stroke={ICON_STROKE} />}
       action={
         <Group gap="xs" wrap="nowrap">
-          <SecondaryButton
-            size="xs"
-            disabled={finished.length === 0}
-            icon={<IconTrash size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
-            onClick={async () => {
-              await submit(
-                () => api.del("/queue/finished"),
-                "status_queue_cleared",
-              );
-              await refreshAll();
-            }}
-          >
-            {t("queue_clear_finished")}
-          </SecondaryButton>
+          <ClearFinishedButton />
           <SecondaryButton
             size="xs"
             loading={busy}

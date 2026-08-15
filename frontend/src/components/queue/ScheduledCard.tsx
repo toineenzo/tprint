@@ -16,6 +16,7 @@ import { useSubmit } from "../../hooks/useSubmit";
 import { ICON_SIZE, ICON_STROKE, ROLE } from "../../theme";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionCard } from "../ui/SectionCard";
+import { ClearFinishedButton } from "./ClearFinishedButton";
 import { JobRow, describeRule } from "./jobDisplay";
 
 /** Sort key: soonest first. Jobs with no parseable run_at sink to the bottom. */
@@ -75,6 +76,7 @@ export function ScheduledCard() {
       icon={<IconCalendarClock size={ICON_SIZE.lg} stroke={ICON_STROKE} />}
       action={
         <Group gap="xs" wrap="nowrap">
+          <ClearFinishedButton />
           <Text size="xs" c="dimmed">
             {t("queue_current_time")}
           </Text>
