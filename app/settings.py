@@ -211,6 +211,18 @@ def _clean_style(raw: str | None) -> str | None:
     return json.dumps(_style(raw)) if _style(raw) else None
 
 
+def _multiline(text: str) -> str:
+    """Normalise a submitted multi-line field to plain \n.
+
+    The browser's multipart/form-data encoding rewrites every newline in a
+    field value to CRLF, so a two-line header arrived as "one\r\ntwo". The \r
+    then rode all the way to the printer: the native path emitted a stray
+    carriage return, and the styled path rendered it as a stray glyph — which
+    is what made multi-line headers look unsupported.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
@@ -260,8 +272,8 @@ def update_settings(
             WHERE id = 1
             """,
             (
-                header_text or None,
-                footer_text or None,
+                _multiline(header_text) or None,
+                _multiline(footer_text) or None,
                 default_align,
                 int(default_bold),
                 int(default_double_width),

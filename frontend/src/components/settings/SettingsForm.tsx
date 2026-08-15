@@ -177,6 +177,11 @@ export function SettingsForm({
   // Bumped after every save so the preview panel refetches; the endpoint
   // renders from the stored settings, not from this form's state.
   const [previewKey, setPreviewKey] = useState(0);
+  // "Custom" can't be derived from the width alone: picking it while the width
+  // is still 576 would derive back to "80 mm" and the click would look ignored.
+  const [customPaper, setCustomPaper] = useState(
+    !PAPER_PRESETS.includes(initial.paper_width_px),
+  );
   /** Which logo is being cropped, if either — see CropModal. */
   const [croppingLogo, setCroppingLogo] = useState<"header" | "footer" | null>(null);
   const [tab, setTab] = useState<string | null>(initialTab ?? "frame");
@@ -426,15 +431,19 @@ export function SettingsForm({
               </Text>
               <SegmentedControl
                 fullWidth
-                value={PAPER_PRESETS.includes(values.paper_width_px)
-                  ? String(values.paper_width_px)
-                  : "custom"}
-                onChange={(next) =>
-                  patch({
-                    paper_width_px:
-                      next === "custom" ? values.paper_width_px : Number(next),
-                  })
+                value={
+                  customPaper || !PAPER_PRESETS.includes(values.paper_width_px)
+                    ? "custom"
+                    : String(values.paper_width_px)
                 }
+                onChange={(next) => {
+                  if (next === "custom") {
+                    setCustomPaper(true);
+                    return;
+                  }
+                  setCustomPaper(false);
+                  patch({ paper_width_px: Number(next) });
+                }}
                 data={[
                   { value: "576", label: t("paper_80mm") },
                   { value: "384", label: t("paper_58mm") },

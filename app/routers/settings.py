@@ -198,6 +198,27 @@ def test_printer(
     if not writable:
         return {"ok": False, "device": device, "checks": checks}
 
+    # The check that actually answers "is the printer on". The node exists and
+    # is writable whenever the cable is in — a switched-off printer only shows
+    # up when something opens it, which is why a test that stopped at `access`
+    # reported a healthy connection to a printer that was off.
+    try:
+        fd = os.open(device, os.O_WRONLY | os.O_NONBLOCK)
+        os.close(fd)
+        checks.append({"label": "open", "ok": True, "detail": "the printer responded"})
+    except OSError as exc:
+        checks.append(
+            {
+                "label": "open",
+                "ok": False,
+                "detail": (
+                    f"could not open {device}: {exc.strerror or exc} — "
+                    "the printer is switched off or asleep"
+                ),
+            }
+        )
+        return {"ok": False, "device": device, "checks": checks}
+
     if do_print:
         try:
             printer.print_text("tprint connection test")

@@ -86,6 +86,13 @@ def _fit_to_width(image: Image.Image, width: int | None = None) -> Image.Image:
 
 
 def _render_template(text: str) -> str:
+    """Substitute {datetime}, and flatten any CRLF a client sent.
+
+    Normalising here as well as in `settings._multiline` is deliberate: rows
+    saved before that fix still hold "\r\n", and a stray carriage return
+    reaching the printer is worse than a redundant replace.
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     return text.replace("{datetime}", datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 
