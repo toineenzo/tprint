@@ -226,6 +226,26 @@ def run_manual_queue() -> int:
     return len(rows)
 
 
+def run_job_now(job_id: int) -> bool:
+    """Run one queued job immediately, ahead of the rest of the queue.
+
+    Only a *pending* job, and only one in the manual queue: a scheduled job
+    fires on its own trigger, and "print this one now" must not quietly pull a
+    future print forward — the same invariant `run_manual_queue` keeps for the
+    bulk button. Returns False when there was nothing runnable under that id.
+    """
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM print_jobs WHERE id = ? AND status = 'pending' "
+            "AND run_at IS NULL AND recurrence IS NULL",
+            (job_id,),
+        ).fetchone()
+    if not row:
+        return False
+    _run_job(job_id)
+    return True
+
+
 def _due_job_ids() -> list[int]:
     now = datetime.now().isoformat(timespec="seconds")
     with db.get_conn() as conn:

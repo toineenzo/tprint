@@ -12,6 +12,7 @@ import { displayTimestamp } from "../dates";
 import { useSubmit } from "../hooks/useSubmit";
 import { ICON_SIZE, ICON_STROKE } from "../theme";
 import { SecondaryButton } from "./ui/Buttons";
+import { IconActionButton } from "./ui/IconActionButton";
 import { EmptyState } from "./ui/EmptyState";
 import { ConfirmModal } from "./ui/PromptModals";
 import { TypeBadge } from "./ui/TypeBadge";
@@ -87,13 +88,13 @@ export function HistorySidebar() {
           <Title order={2}>{t("history_title")}</Title>
         </Group>
         {history.length > 0 && (
-          <SecondaryButton
-            size="xs"
+          <IconActionButton
+            label={t("history_clear")}
+            tone="danger"
             onClick={() => setClearing(true)}
-            icon={<IconTrash size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
           >
-            {t("history_clear")}
-          </SecondaryButton>
+            <IconTrash size={ICON_SIZE.md} stroke={ICON_STROKE} />
+          </IconActionButton>
         )}
       </Group>
 

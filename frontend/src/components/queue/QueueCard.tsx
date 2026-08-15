@@ -83,6 +83,13 @@ export function QueueCard() {
                 {index > 0 && <Divider mb="xs" />}
                 <JobRow
                   job={job}
+                  onRun={async () => {
+                    await submit(
+                      () => api.post(`/queue/${job.id}/run`),
+                      "status_printed",
+                    );
+                    await refreshAll();
+                  }}
                   onCancel={async () => {
                     await submit(
                       () => api.del(`/queue/${job.id}`),

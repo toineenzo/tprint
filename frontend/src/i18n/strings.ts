@@ -244,6 +244,7 @@ export type StringKey =
   | "queue_panel_title"
   | "queue_run_now"
   | "queue_clear_finished"
+  | "queue_run_job"
   | "queue_current_time"
   | "history_clear"
   | "history_confirm_clear"

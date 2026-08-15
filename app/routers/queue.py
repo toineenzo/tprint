@@ -16,6 +16,14 @@ def run_queue(_: None = Depends(auth.require_api_auth)):
     return {"ran": ran}
 
 
+@router.post("/{job_id}/run")
+def run_single_job(job_id: int, _: None = Depends(auth.require_api_auth)):
+    """Print one queued job now, leaving the rest of the queue where it is."""
+    if not print_queue.run_job_now(job_id):
+        raise HTTPException(404, "job not found, not pending, or not a manual queue job")
+    return {"status": "printed"}
+
+
 @router.delete("/finished")
 def clear_finished_jobs(_: None = Depends(auth.require_api_auth)):
     return {"cleared": print_queue.clear_finished()}

@@ -1,5 +1,5 @@
 import { Badge, Group, Stack, Text } from "@mantine/core";
-import { IconRepeat, IconX } from "@tabler/icons-react";
+import { IconPlayerPlay, IconRepeat, IconX } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 
 import { useStrings } from "../../AppContext";
@@ -69,10 +69,14 @@ export function StatusBadge({ status }: { status: QueueStatus }) {
 export function JobRow({
   job,
   detail,
+  onRun,
   onCancel,
 }: {
   job: QueueJob;
   detail?: ReactNode;
+  /** Only the manual queue passes this: a scheduled job runs on its own
+   *  trigger, and printing it early would pull a future print forward. */
+  onRun?: () => void;
   onCancel: () => void;
 }) {
   const t = useStrings();
@@ -99,9 +103,16 @@ export function JobRow({
       </Stack>
 
       {job.status === "pending" && (
-        <IconActionButton label={t("cancel")} tone="danger" onClick={onCancel}>
-          <IconX size={ICON_SIZE.md} stroke={ICON_STROKE} />
-        </IconActionButton>
+        <Group gap={4} wrap="nowrap">
+          {onRun && (
+            <IconActionButton label={t("queue_run_job")} onClick={onRun}>
+              <IconPlayerPlay size={ICON_SIZE.md} stroke={ICON_STROKE} />
+            </IconActionButton>
+          )}
+          <IconActionButton label={t("cancel")} tone="danger" onClick={onCancel}>
+            <IconX size={ICON_SIZE.md} stroke={ICON_STROKE} />
+          </IconActionButton>
+        </Group>
       )}
     </Group>
   );
