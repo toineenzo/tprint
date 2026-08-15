@@ -510,6 +510,15 @@ thumbnail, not the file, so there would be nothing to reprint from.
 `can_snippet` in the public projection is that column's presence, which is all
 the UI needs to know whether to offer "save as snippet".
 
+**`docs/wiki/` is the source; the GitHub wiki is its published copy.** Not the
+other way round, and it can't be deleted in favour of the wiki: `app/help.py`
+serves those files when GitHub is unreachable, and the Dockerfile bakes them
+into the image, so an offline install would otherwise have no help at all.
+Edit the files in the repo and run `scripts/sync_wiki.sh`, which clones the
+wiki, copies the pages over and regenerates `_Sidebar.md`. A page edited in
+GitHub's web editor is overwritten by the next sync — copy it back into
+`docs/wiki/` first.
+
 **In-app help fetches the wiki, and falls back to the copy in the image.**
 `app/help.py` reads `raw.githubusercontent.com/wiki/...` with a short timeout
 and falls back to `docs/wiki/*.md` — the same Markdown that gets pushed to the
