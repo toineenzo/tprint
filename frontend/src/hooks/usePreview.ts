@@ -15,6 +15,7 @@ export function previewForm(request: PreviewRequest): FormData {
   if (request.snippet_id !== undefined) {
     form.set("snippet_id", String(request.snippet_id));
   }
+  if (request.crop) form.set("crop", request.crop);
   if (request.file) form.set("file", request.file);
   return form;
 }

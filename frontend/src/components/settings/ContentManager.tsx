@@ -9,7 +9,7 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconPencil, IconPlus, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { useBootstrap, useStrings } from "../../AppContext";
@@ -89,6 +89,7 @@ export function ContentManager() {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [deleting, setDeleting] = useState<ContentItem | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -210,6 +211,13 @@ export function ContentManager() {
         >
           {t("content_add")}
         </SecondaryButton>
+        <SecondaryButton
+          size="xs"
+          onClick={() => setRestoring(true)}
+          icon={<IconRefresh size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+        >
+          {t("content_restore")}
+        </SecondaryButton>
       </Group>
 
       <Modal
@@ -301,6 +309,23 @@ export function ContentManager() {
           setDeleting(null);
           if (!target) return;
           await submit(() => api.del(`/api/content/${target.id}`), "status_saved");
+          await refresh();
+        }}
+      />
+
+      <ConfirmModal
+        opened={restoring}
+        tone="danger"
+        confirmIcon={<IconRefresh size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+        confirmLabel={t("content_restore")}
+        message={t("content_confirm_restore")}
+        onClose={() => setRestoring(false)}
+        onConfirm={async () => {
+          setRestoring(false);
+          await submit(
+            () => api.postJson("/api/content/restore-defaults", {}),
+            "status_saved",
+          );
           await refresh();
         }}
       />

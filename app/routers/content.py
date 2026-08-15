@@ -85,6 +85,15 @@ def update_content(
     return {"status": "updated"}
 
 
+@router.post("/restore-defaults")
+def restore_content_defaults(_: None = Depends(auth.require_session_auth)):
+    """Session auth, like the settings reset: this destroys the user's own
+    jokes and recipes, which the print token has no business being able to do.
+    """
+    content.restore_defaults()
+    return {"counts": content.counts()}
+
+
 @router.delete("/{item_id}")
 def delete_content(item_id: int, _: None = Depends(auth.require_api_auth)):
     if not content.delete_item(item_id):

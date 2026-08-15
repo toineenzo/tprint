@@ -1,4 +1,4 @@
-import { Checkbox, Group } from "@mantine/core";
+import { Switch, Group } from "@mantine/core";
 import { IconPlaylistAdd, IconPrinter } from "@tabler/icons-react";
 
 import { useStrings } from "../../AppContext";
@@ -59,7 +59,7 @@ export function PrintActions({
         </SecondaryButton>
       </Group>
 
-      <Checkbox
+      <Switch
         checked={saveAsSnippet}
         onChange={(event) => onSaveAsSnippetChange(event.currentTarget.checked)}
         disabled={busy}

@@ -1,12 +1,12 @@
-import { Group, Select, Stack, TextInput } from "@mantine/core";
-import { DateInput } from "@mantine/dates";
-import { IconPlus, IconX } from "@tabler/icons-react";
+import { ActionIcon, Group, Select, Stack, TextInput } from "@mantine/core";
+import { DateTimePicker } from "@mantine/dates";
+import { IconGripVertical, IconPlus, IconX } from "@tabler/icons-react";
 import { useState } from "react";
 
 import { useStrings } from "../../AppContext";
 import { api } from "../../api/client";
 import type { PrintMode, PrintResponse } from "../../api/types";
-import { toDateOnly } from "../../dates";
+import { toDueString } from "../../dates";
 import { deriveName, useSaveAsSnippet } from "../../hooks/useSaveAsSnippet";
 import { usePrintGate } from "./PrintGate";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
@@ -29,6 +29,21 @@ export function TasksTab() {
   const options = useQueueOptions();
   const { runPrint, busy } = usePrintGate();
   const saveSnippet = useSaveAsSnippet();
+
+  /** Index of the row being dragged, or null. See the grip handle below. */
+  const [, setDragging] = useState<number | null>(null);
+
+  const moveRow = (to: number) => {
+    setDragging((from) => {
+      if (from === null || from === to) return from;
+      setRows((current) => {
+        const next = [...current];
+        next.splice(to, 0, ...next.splice(from, 1));
+        return next;
+      });
+      return to;
+    });
+  };
 
   const patchRow = (id: number, patch: Partial<Row>) =>
     setRows((current) =>
@@ -61,7 +76,7 @@ export function TasksTab() {
     .filter((row) => row.text.trim())
     .map((row) => ({
       text: row.text.trim(),
-      due: row.due ? toDateOnly(row.due) : null,
+      due: row.due ? toDueString(row.due) : null,
     }));
 
   const send = async (queue: boolean) => {
@@ -112,8 +127,33 @@ export function TasksTab() {
       />
 
       <Stack gap="xs">
-        {rows.map((row) => (
-          <Group key={row.id} gap="xs" wrap="nowrap" align="flex-start">
+        {rows.map((row, index) => (
+          <Group
+            key={row.id}
+            gap="xs"
+            wrap="nowrap"
+            align="flex-start"
+            onDragOver={(event) => {
+              // Reordering happens on hover rather than on drop, so the list
+              // shows the result while you drag instead of jumping at the end.
+              event.preventDefault();
+              moveRow(index);
+            }}
+          >
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              aria-label={t("reorder_item")}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "move";
+                setDragging(index);
+              }}
+              onDragEnd={() => setDragging(null)}
+              style={{ cursor: "grab" }}
+            >
+              <IconGripVertical size={ICON_SIZE.md} stroke={ICON_STROKE} />
+            </ActionIcon>
             <TextInput
               flex={2}
               value={row.text}
@@ -127,13 +167,13 @@ export function TasksTab() {
               }}
               placeholder={t("task_placeholder")}
             />
-            <DateInput
+            <DateTimePicker
               flex={1}
               value={row.due}
               onChange={(due) => patchRow(row.id, { due })}
               placeholder={t("due_date")}
               aria-label={t("due_date")}
-              valueFormat="YYYY-MM-DD"
+              valueFormat="YYYY-MM-DD HH:mm"
               clearable
             />
             <IconActionButton

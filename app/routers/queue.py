@@ -16,6 +16,11 @@ def run_queue(_: None = Depends(auth.require_api_auth)):
     return {"ran": ran}
 
 
+@router.delete("/finished")
+def clear_finished_jobs(_: None = Depends(auth.require_api_auth)):
+    return {"cleared": print_queue.clear_finished()}
+
+
 @router.delete("/{job_id}")
 def cancel_queued(job_id: int, _: None = Depends(auth.require_api_auth)):
     if not print_queue.cancel_job(job_id):

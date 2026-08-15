@@ -1,4 +1,4 @@
-import { Checkbox, FileInput, SegmentedControl, Select, Stack, Text } from "@mantine/core";
+import { Switch, FileInput, SegmentedControl, Select, Stack, Text } from "@mantine/core";
 import { IconCalendarEvent } from "@tabler/icons-react";
 import { useState } from "react";
 
@@ -87,7 +87,7 @@ export function IcsTab() {
       />
 
       <Stack gap={4}>
-        <Checkbox
+        <Switch
           label={t("agenda_overview")}
           description={t("agenda_overview_hint")}
           checked={overview !== "none"}

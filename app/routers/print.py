@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -25,6 +26,22 @@ from app.schemas import (
 router = APIRouter(prefix="/print", tags=["print"])
 
 
+def _parse_crop(raw: str | None) -> dict | None:
+    """A crop box sent as JSON fractions, or None.
+
+    Tolerant on purpose: the box is a refinement of what to print, so a
+    malformed one prints the whole page rather than failing the job. The
+    numbers themselves are clamped in `printer.crop_fractions`.
+    """
+    if not raw:
+        return None
+    try:
+        box = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return box if isinstance(box, dict) else None
+
+
 def _resolve_lang(request: Request, override: Optional[str]) -> str:
     if override:
         return i18n.resolve_lang(override)
@@ -42,6 +59,8 @@ def _queued_response(body: QueueOptions, kind: str, payload: dict, label: str) -
         recurrence=body.recurrence,
         recurrence_time=body.recurrence_time,
         recurrence_days=body.recurrence_days,
+        ends_after=body.ends_after,
+        ends_at=body.ends_at,
     )
     return {"status": "queued", "job_id": job_id}
 
@@ -111,14 +130,16 @@ async def print_image(
 @router.post("/pdf")
 async def print_pdf(
     file: UploadFile = File(...),
+    crop: Optional[str] = Form(None),
     options: QueueOptions = Depends(queue_options_form),
     _: None = Depends(auth.require_api_auth),
 ):
     data = await file.read()
+    box = _parse_crop(crop)
     if _is_queued(options):
         saved = print_queue.save_upload(data, file.filename or "file.pdf")
-        return _queued_response(options, "pdf", {"file": saved}, label="PDF")
-    actions.print_pdf(data)
+        return _queued_response(options, "pdf", {"file": saved, "crop": box}, label="PDF")
+    actions.print_pdf(data, box)
     return {"status": "printed"}
 
 
@@ -311,6 +332,7 @@ async def preview_job(
     overview: str = Form("none"),
     orientation: str = Form("vertical"),
     snippet_id: Optional[int] = Form(None),
+    crop: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     request: Request = None,
     _: None = Depends(auth.require_api_auth),
@@ -354,7 +376,7 @@ async def preview_job(
     elif kind == "pdf":
         if not data:
             raise HTTPException(400, "a file is required to preview a PDF")
-        content_fn = printer.images_content(printer._render_pdf_pages(data))
+        content_fn = printer.images_content(printer._render_pdf_pages(data, _parse_crop(crop)))
     elif kind == "checklist":
         try:
             parsed = ChecklistPrintRequest.model_validate_json(payload or "")

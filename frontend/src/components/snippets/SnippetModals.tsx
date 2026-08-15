@@ -1,5 +1,5 @@
 import {
-  Checkbox,
+  Switch,
   Code,
   FileInput,
   Group,
@@ -171,7 +171,7 @@ export function SnippetEditModal({
               {snippet.files.map((file) => (
                 <Stack key={file} gap={4} align="center">
                   <Image src={fileUrl(file)} alt="" h={72} w="100%" fit="cover" radius="sm" />
-                  <Checkbox
+                  <Switch
                     size="xs"
                     label={t("remove_item")}
                     checked={removed.includes(file)}

@@ -3,6 +3,7 @@ import {
   Chip,
   Group,
   MultiSelect,
+  NumberInput,
   SegmentedControl,
   Stack,
   Text,
@@ -35,6 +36,10 @@ export type QueueOptionsState = {
   /** Weekdays 1-7 when recurrence is weekly; days of month when monthly. */
   recurrenceDays: number[];
   recurrenceTime: string;
+  /** How a repeating job stops: never, after N runs, or on a date. */
+  ends: "never" | "after" | "on";
+  endsAfter: number;
+  endsAt: Date | null;
 };
 
 const EMPTY: QueueOptionsState = {
@@ -43,11 +48,18 @@ const EMPTY: QueueOptionsState = {
   recurrence: "daily",
   recurrenceDays: [],
   recurrenceTime: DEFAULT_TIME,
+  ends: "never",
+  endsAfter: 5,
+  endsAt: null,
 };
 
 /** Whether the chosen mode has everything it needs to be scheduled. */
 export function isScheduleComplete(state: QueueOptionsState): boolean {
   if (state.mode === "once") return state.runAt !== null;
+  if (state.mode === "repeat" && state.ends === "on" && !state.endsAt) return false;
+  if (state.mode === "repeat" && state.ends === "after" && state.endsAfter < 1) {
+    return false;
+  }
   if (state.mode === "repeat" && state.recurrence !== "daily") {
     return state.recurrenceDays.length > 0;
   }
@@ -76,6 +88,11 @@ export function useQueueOptions() {
         recurrence_time: state.recurrenceTime || DEFAULT_TIME,
         recurrence_days:
           state.recurrence === "daily" ? null : state.recurrenceDays,
+        ends_after: state.ends === "after" ? state.endsAfter : null,
+        ends_at:
+          state.ends === "on" && state.endsAt
+            ? toNaiveDateTime(state.endsAt)
+            : null,
       };
     }
     return { queue: true };
@@ -100,7 +117,14 @@ function summarize(state: QueueOptionsState, t: Translate, lang: string): string
       : t("schedule_datetime_hint");
   }
   if (state.mode === "repeat") {
-    return `${describeRecurrence(state, t, lang)} · ${state.recurrenceTime || DEFAULT_TIME}`;
+    const base = `${describeRecurrence(state, t, lang)} · ${state.recurrenceTime || DEFAULT_TIME}`;
+    if (state.ends === "after") {
+      return `${base} · ${t("schedule_ends_after_short").replace("{n}", String(state.endsAfter))}`;
+    }
+    if (state.ends === "on" && state.endsAt) {
+      return `${base} · ${t("schedule_ends_on_short").replace("{date}", displayTimestamp(toNaiveDateTime(state.endsAt)))}`;
+    }
+    return base;
   }
   return t("schedule_mode_queue");
 }
@@ -250,6 +274,9 @@ export function QueueOptionsFields({ value, onChange }: Props) {
 
                 <TimeInput
                   label={t("recurrence_time_label")}
+                  // Seconds are optional in the stored value; the input always
+                  // offers them, and "HH:MM" from an older job still parses.
+                  withSeconds
                   leftSection={
                     <IconClock size={ICON_SIZE.md} stroke={ICON_STROKE} />
                   }
@@ -258,6 +285,44 @@ export function QueueOptionsFields({ value, onChange }: Props) {
                     patch({ recurrenceTime: event.currentTarget.value })
                   }
                 />
+
+                <Stack gap={6}>
+                  <Text size="sm">{t("schedule_ends_label")}</Text>
+                  <SegmentedControl
+                    fullWidth
+                    value={value.ends}
+                    onChange={(ends) =>
+                      patch({ ends: ends as QueueOptionsState["ends"] })
+                    }
+                    data={[
+                      { value: "never", label: t("schedule_ends_never") },
+                      { value: "after", label: t("schedule_ends_after") },
+                      { value: "on", label: t("schedule_ends_on") },
+                    ]}
+                  />
+                  {value.ends === "after" && (
+                    <NumberInput
+                      label={t("schedule_ends_after_label")}
+                      min={1}
+                      value={value.endsAfter}
+                      onChange={(next) =>
+                        patch({ endsAfter: Math.max(1, Number(next) || 1) })
+                      }
+                    />
+                  )}
+                  {value.ends === "on" && (
+                    <DateTimePicker
+                      label={t("schedule_ends_on_label")}
+                      aria-label={t("schedule_ends_on_label")}
+                      placeholder="—"
+                      clearable
+                      valueFormat="YYYY-MM-DD HH:mm"
+                      value={value.endsAt}
+                      onChange={(endsAt) => patch({ endsAt })}
+                      error={value.endsAt ? null : t("schedule_datetime_hint")}
+                    />
+                  )}
+                </Stack>
               </>
             )}
           </Stack>

@@ -1,4 +1,5 @@
 import { Modal } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 
 import { useBootstrap, useStrings } from "../../AppContext";
 import { useAppData } from "../../AppData";
@@ -20,6 +21,14 @@ const BLANK: PrinterSettings = {
   print_delay_seconds: 0,
   retention_max_items: 50,
   retention_max_age_days: 0,
+  queue_auto_clear: false,
+  header_style: null,
+  footer_style: null,
+  printer_backend: "file",
+  printer_device: "/dev/usb/lp0",
+  setup_done: true,
+  auth_enabled: true,
+  has_password: true,
 };
 
 /**
@@ -32,9 +41,12 @@ const BLANK: PrinterSettings = {
  */
 export function SettingsModal({
   opened,
+  initialTab,
   onClose,
 }: {
   opened: boolean;
+  /** Which tab to land on — set when something deep-links into settings. */
+  initialTab?: string;
   onClose: () => void;
 }) {
   const t = useStrings();
@@ -43,6 +55,7 @@ export function SettingsModal({
   // changes how the print gate and the Surprise card behave without a reload.
   const { settings, setSettings } = useAppData();
   const saved = settings ?? boot.settings ?? BLANK;
+  const narrow = useMediaQuery("(max-width: 48em)");
 
   return (
     <Modal
@@ -50,8 +63,9 @@ export function SettingsModal({
       onClose={onClose}
       title={t("settings_title")}
       size="xl"
+      fullScreen={narrow}
     >
-      <SettingsForm initial={saved} onSaved={setSettings} />
+      <SettingsForm initial={saved} initialTab={initialTab} onSaved={setSettings} />
     </Modal>
   );
 }

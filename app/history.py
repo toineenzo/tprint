@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 
@@ -9,7 +10,18 @@ THUMB_WIDTH = 300
 HISTORY_LIMIT = 50
 
 
-def add_entry(kind: str, preview_text: str | None = None, preview_image: Image.Image | None = None) -> None:
+def add_entry(
+    kind: str,
+    preview_text: str | None = None,
+    preview_image: Image.Image | None = None,
+    payload: dict | None = None,
+) -> None:
+    """Record a print. `payload` is what it would take to print it again.
+
+    Only set for kinds that are pure data (text, rich text, checklist, code):
+    an image or PDF print keeps a thumbnail, not the file, so there is nothing
+    honest to offer as "save this as a snippet".
+    """
     image_path = None
     if preview_image is not None:
         thumb = preview_image.convert("RGB")
@@ -22,8 +34,14 @@ def add_entry(kind: str, preview_text: str | None = None, preview_image: Image.I
 
     with db.get_conn() as conn:
         conn.execute(
-            "INSERT INTO print_history (kind, preview_text, preview_image_path) VALUES (?, ?, ?)",
-            (kind, (preview_text or "")[:1000] or None, image_path),
+            "INSERT INTO print_history (kind, preview_text, preview_image_path, payload) "
+            "VALUES (?, ?, ?, ?)",
+            (
+                kind,
+                (preview_text or "")[:1000] or None,
+                image_path,
+                json.dumps(payload) if payload else None,
+            ),
         )
         _prune(conn)
 
@@ -67,10 +85,25 @@ def _prune(conn) -> None:
     conn.execute(f"DELETE FROM print_history WHERE {where}", params)
 
 
+def clear_all() -> int:
+    """Delete every history entry and its thumbnail. Returns how many went."""
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT preview_image_path FROM print_history"
+        ).fetchall()
+        for row in rows:
+            if row["preview_image_path"]:
+                path = os.path.join(config.HISTORY_THUMB_DIR, row["preview_image_path"])
+                if os.path.exists(path):
+                    os.remove(path)
+        conn.execute("DELETE FROM print_history")
+    return len(rows)
+
+
 def list_recent(limit: int = HISTORY_LIMIT) -> list[dict]:
     with db.get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, kind, preview_text, preview_image_path, created_at "
+            "SELECT id, kind, preview_text, preview_image_path, payload, created_at "
             "FROM print_history ORDER BY created_at DESC, id DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -86,10 +119,27 @@ def list_recent_public(limit: int = HISTORY_LIMIT) -> list[dict]:
             "kind": entry["kind"],
             "preview_text": entry["preview_text"],
             "has_image": bool(entry["preview_image_path"]),
+            # Whether "save as snippet" can be offered for this entry, rather
+            # than the payload itself: the UI only needs to know if it can.
+            "can_snippet": bool(entry["payload"]),
             "created_at": entry["created_at"],
         }
         for entry in list_recent(limit)
     ]
+
+
+def entry_payload(entry_id: int) -> tuple[str, dict] | None:
+    """(kind, payload) for an entry that can be reprinted, else None."""
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT kind, payload FROM print_history WHERE id = ?", (entry_id,)
+        ).fetchone()
+    if not row or not row["payload"]:
+        return None
+    try:
+        return row["kind"], json.loads(row["payload"])
+    except (TypeError, ValueError):
+        return None
 
 
 def thumb_path(entry_id: int) -> str | None:

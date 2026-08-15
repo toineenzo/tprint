@@ -7,7 +7,6 @@ import {
   Stack,
   Text,
   TextInput,
-  Textarea,
   Tooltip,
 } from "@mantine/core";
 import {
@@ -26,6 +25,7 @@ import { FileButton } from "@mantine/core";
 import { useStrings } from "../../../AppContext";
 import { SecondaryButton } from "../../ui/Buttons";
 import { ICON_SIZE, ICON_STROKE } from "../../../theme";
+import { RichTextEditor } from "../RichTextEditor";
 import {
   drawPage,
   dropCache,
@@ -48,6 +48,9 @@ const SHADES = [
   { label: "rt_tint_dark", value: 90 },
   { label: "rt_tint_light", value: 160 },
 ] as const;
+
+/** Side of the square resize grip, in page dots. */
+const HANDLE = 22;
 
 let nextId = 0;
 
@@ -96,11 +99,26 @@ export function ImageEditor({
   const [cropDrag, setCropDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
+  // A resize in progress: the item's left edge and its size/scale when the
+  // drag started, so the new scale is a plain ratio of how far it was dragged.
+  const resize = useRef<{ id: string; x0: number; w0: number; scale0: number } | null>(null);
   const stroke = useRef<Stroke | null>(null);
   const cropTarget = useRef<Placed | null>(null);
 
   const { placed, height } = layoutPage(state, images, pageWidth);
   const selectedItem = state.items.find((item) => item.id === selected) ?? null;
+
+  // Whatever was just added becomes the selection, so its editing controls
+  // (the text box, the code fields, rotate/crop/size) are there immediately
+  // instead of needing a tap on the canvas to find them.
+  const itemCount = state.items.length;
+  const previousCount = useRef(itemCount);
+  useEffect(() => {
+    if (itemCount > previousCount.current) {
+      setSelected(state.items[itemCount - 1]?.id ?? null);
+    }
+    previousCount.current = itemCount;
+  }, [itemCount, state.items]);
 
   /** Pointer position in page dots, undoing the CSS display scaling. */
   const toPage = useCallback((event: React.PointerEvent) => {
@@ -133,6 +151,11 @@ export function ImageEditor({
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(box.x, box.y, box.w, box.h);
+        // Resize grip, bottom-right. Chrome like the marquee: drawn after
+        // drawPage and therefore never part of what gets printed.
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#4c6ef5";
+        ctx.fillRect(box.x + box.w - HANDLE, box.y + box.h - HANDLE, HANDLE, HANDLE);
         ctx.restore();
       }
     }
@@ -176,6 +199,27 @@ export function ImageEditor({
       return;
     }
 
+    // The grip wins over selection/drag, in both layouts — a grid item can't
+    // be moved, but it can still be made smaller within its cell.
+    const box = selectedItem
+      ? placed.find((candidate) => candidate.item.id === selectedItem.id)
+      : null;
+    if (
+      box &&
+      point.x >= box.x + box.w - HANDLE &&
+      point.x <= box.x + box.w &&
+      point.y >= box.y + box.h - HANDLE &&
+      point.y <= box.y + box.h
+    ) {
+      resize.current = {
+        id: box.item.id,
+        x0: box.x,
+        w0: box.w,
+        scale0: box.item.scale,
+      };
+      return;
+    }
+
     setSelected(hit?.item.id ?? null);
     // Dragging is only meaningful in free layout; a grid computes positions.
     if (hit && state.layout === "free") {
@@ -184,8 +228,15 @@ export function ImageEditor({
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!stroke.current && !drag.current && !cropDrag) return;
+    if (!stroke.current && !drag.current && !cropDrag && !resize.current) return;
     const point = toPage(event);
+
+    if (resize.current) {
+      const { id, x0, w0, scale0 } = resize.current;
+      const ratio = Math.max(0.05, (point.x - x0) / Math.max(1, w0));
+      patchItem(id, { scale: Math.min(4, Math.max(0.05, scale0 * ratio)) });
+      return;
+    }
 
     if (stroke.current) {
       stroke.current.points.push(point);
@@ -205,6 +256,7 @@ export function ImageEditor({
   };
 
   const onPointerUp = () => {
+    resize.current = null;
     if (cropDrag && cropTarget.current) {
       const box = cropTarget.current;
       const x0 = Math.min(cropDrag.x0, cropDrag.x1);
@@ -353,11 +405,20 @@ export function ImageEditor({
           <NumberInput
             size="xs"
             w={130}
-            label={t("editor_padding")}
+            label={t("editor_padding_x")}
             min={0}
             max={64}
             value={state.padding}
             onChange={(value) => onChange({ ...state, padding: Number(value) || 0 })}
+          />
+          <NumberInput
+            size="xs"
+            w={130}
+            label={t("editor_padding_y")}
+            min={0}
+            max={64}
+            value={state.paddingY}
+            onChange={(value) => onChange({ ...state, paddingY: Number(value) || 0 })}
           />
         </Group>
       )}
@@ -403,24 +464,20 @@ export function ImageEditor({
       />
 
       {selectedItem?.source.kind === "text" && (
-        <Textarea
-          label={t("composer_text_item")}
-          autosize
-          minRows={2}
-          value={selectedItem.source.blocks.map((block) => block.text).join("\n")}
-          onChange={(event) => {
-            const source = selectedItem.source as Extract<ItemSource, { kind: "text" }>;
-            const template = source.blocks[0];
-            onUpdateSource(selectedItem.id, {
-              kind: "text",
-              // One block per line, each inheriting the first block's styling —
-              // the same shape the standalone rich-text editor produces.
-              blocks: event.currentTarget.value
-                .split("\n")
-                .map((text) => ({ ...template, text })),
-            });
-          }}
-        />
+        <Stack gap={4}>
+          <Text size="sm" fw={600}>
+            {t("composer_text_item")}
+          </Text>
+          {/* The same editor the Text tab uses, on the same block shape — a
+              composed text block therefore styles exactly like a printed one,
+              instead of a plain textarea that could only inherit one style. */}
+          <RichTextEditor
+            blocks={selectedItem.source.blocks}
+            onChange={(blocks) =>
+              onUpdateSource(selectedItem.id, { kind: "text", blocks })
+            }
+          />
+        </Stack>
       )}
 
       {selectedItem?.source.kind === "code" && (

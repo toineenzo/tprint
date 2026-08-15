@@ -10,6 +10,7 @@ import {
 import { useStrings } from "../../AppContext";
 import type { RichTextBlock, Tint } from "../../api/types";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
+import { AlignPicker } from "../ui/AlignPicker";
 import { SecondaryButton } from "../ui/Buttons";
 
 export const EMPTY_BLOCK: RichTextBlock = {
@@ -114,6 +115,12 @@ export function RichTextEditor({
               </ActionIcon>
             </Tooltip>
 
+            <AlignPicker
+              size="xs"
+              value={block.align}
+              onChange={(align) => patch(index, { align })}
+            />
+
             <Select
               w={110}
               size="xs"
@@ -141,22 +148,6 @@ export function RichTextEditor({
                 { value: "light", label: t("rt_tint_light") },
               ]}
             />
-            <Select
-              w={100}
-              size="xs"
-              aria-label={t("settings_align")}
-              value={block.align}
-              allowDeselect={false}
-              onChange={(value) =>
-                patch(index, { align: (value as RichTextBlock["align"]) ?? "left" })
-              }
-              data={[
-                { value: "left", label: t("align_left") },
-                { value: "center", label: t("align_center") },
-                { value: "right", label: t("align_right") },
-              ]}
-            />
-
             <Tooltip label={t("remove_item")} withArrow openDelay={300}>
               <ActionIcon
                 aria-label={t("remove_item")}

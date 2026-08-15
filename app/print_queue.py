@@ -52,6 +52,8 @@ def enqueue(
     recurrence: str | None = None,
     recurrence_time: str | None = None,
     recurrence_days: list[int] | None = None,
+    ends_after: int | None = None,
+    ends_at: str | None = None,
 ) -> int:
     run_at = _normalize_run_at(run_at)
     days = parse_days(recurrence_days)
@@ -79,8 +81,9 @@ def enqueue(
         cur = conn.execute(
             """
             INSERT INTO print_jobs
-                (kind, payload, label, run_at, recurrence, recurrence_time, recurrence_days)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (kind, payload, label, run_at, recurrence, recurrence_time,
+                 recurrence_days, ends_after, ends_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 kind,
@@ -90,6 +93,8 @@ def enqueue(
                 recurrence,
                 recurrence_time,
                 json.dumps(days) if days else None,
+                ends_after if recurrence else None,
+                ends_at if recurrence else None,
             ),
         )
         return cur.lastrowid
@@ -106,6 +111,9 @@ def prune_finished_jobs() -> None:
     from app import settings as settings_store
 
     current = settings_store.get_settings()
+    if current["queue_auto_clear"]:
+        clear_finished()
+        return
     max_items = int(current["retention_max_items"])
     max_age_days = int(current["retention_max_age_days"])
 
@@ -130,6 +138,21 @@ def prune_finished_jobs() -> None:
         conn.execute(f"DELETE FROM print_jobs WHERE {where}", params)
 
 
+def clear_finished() -> int:
+    """Drop every job that has already run, leaving pending/scheduled work alone.
+
+    The same reasoning as prune_finished_jobs: a pending job is upcoming work,
+    so neither the button nor the auto-clear setting can ever remove one.
+    """
+    finished = "status IN ('done', 'failed', 'canceled')"
+    with db.get_conn() as conn:
+        rows = conn.execute(f"SELECT payload FROM print_jobs WHERE {finished}").fetchall()
+        for row in rows:
+            _cleanup_payload_files(json.loads(row["payload"]))
+        conn.execute(f"DELETE FROM print_jobs WHERE {finished}")
+    return len(rows)
+
+
 def is_scheduled(run_at: str | None, recurrence: str | None) -> bool:
     """Whether a job belongs to the Scheduled section rather than the manual queue.
 
@@ -145,7 +168,8 @@ def list_jobs() -> list[dict]:
         rows = conn.execute(
             """
             SELECT id, kind, label, status, run_at, recurrence, recurrence_time,
-                   recurrence_days, last_run_at, error, created_at
+                   recurrence_days, ends_after, ends_at, run_count,
+                   last_run_at, error, created_at
             FROM print_jobs
             ORDER BY (status = 'pending') DESC, COALESCE(run_at, created_at) ASC, id ASC
             """
@@ -212,17 +236,23 @@ def _due_job_ids() -> list[int]:
         return [row["id"] for row in rows]
 
 
-def _parse_time(recurrence_time: str | None) -> tuple[int, int]:
-    """Hour/minute from an "HH:MM" string, falling back to a sane default.
+def _parse_time(recurrence_time: str | None) -> tuple[int, int, int]:
+    """Hour/minute/second from an "HH:MM" or "HH:MM:SS" string.
+
+    Seconds are optional because every job scheduled before the UI offered
+    them stores "HH:MM"; a missing seconds field means :00, which is exactly
+    what those jobs already did.
 
     New jobs are validated at the API boundary (app/schemas.py), but rows
     written before that validation existed can hold NULL or junk here, and the
     background worker must not die on one of them.
     """
     try:
-        hour, minute = (recurrence_time or "").split(":")[:2]
-        return int(hour), int(minute)
-    except (ValueError, AttributeError):
+        parts = (recurrence_time or "").split(":")
+        hour, minute = int(parts[0]), int(parts[1])
+        second = int(parts[2]) if len(parts) > 2 else 0
+        return hour, minute, second
+    except (ValueError, IndexError, AttributeError):
         return _parse_time(DEFAULT_RECURRENCE_TIME)
 
 
@@ -258,9 +288,9 @@ def _next_occurrence(
     if recurrence not in RECURRENCES:
         raise ValueError(f"unknown recurrence: {recurrence!r}")
 
-    hour, minute = _parse_time(recurrence_time)
+    hour, minute, second = _parse_time(recurrence_time)
     days = parse_days(recurrence_days)
-    at_time = after.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    at_time = after.replace(hour=hour, minute=minute, second=second, microsecond=0)
 
     if recurrence == "daily":
         return at_time if at_time > after else at_time + timedelta(days=1)
@@ -285,13 +315,33 @@ def _next_occurrence(
     for _ in range(63):
         for day in days:
             try:
-                candidate = datetime(year, month, day, hour, minute)
+                candidate = datetime(year, month, day, hour, minute, second)
             except ValueError:
                 continue
             if candidate > after:
                 return candidate
         month, year = (1, year + 1) if month == 12 else (month + 1, year)
     raise ValueError(f"no valid date for days {days} within 63 months")
+
+
+def _has_ended(job: dict, runs: int, next_run: datetime) -> bool:
+    """Whether a repeating job has just printed for the last time.
+
+    Two independent rules, whichever comes first: a run count, and a date the
+    schedule may not pass. A job with neither repeats forever, which is what
+    every job scheduled before end rules existed does.
+    """
+    limit = job.get("ends_after")
+    if limit and runs >= int(limit):
+        return True
+
+    until = job.get("ends_at")
+    if until:
+        try:
+            return next_run > datetime.fromisoformat(until)
+        except (TypeError, ValueError):
+            return False
+    return False
 
 
 def _run_job(job_id: int) -> None:
@@ -326,6 +376,8 @@ def _run_job(job_id: int) -> None:
                 (error, job_id),
             )
         elif job["recurrence"]:
+            runs = int(job["run_count"] or 0) + 1
+            conn.execute("UPDATE print_jobs SET run_count = ? WHERE id = ?", (runs, job_id))
             try:
                 next_run = _next_occurrence(
                     job["recurrence"],
@@ -343,20 +395,37 @@ def _run_job(job_id: int) -> None:
                     (str(exc), job_id),
                 )
             else:
-                conn.execute(
-                    """
-                    UPDATE print_jobs
-                    SET status = 'pending', run_at = ?, last_run_at = datetime('now'), error = NULL
-                    WHERE id = ?
-                    """,
-                    (next_run.isoformat(timespec="seconds"), job_id),
-                )
+                # An end rule retires the job instead of rescheduling it.
+                # Both rules are checked *after* this run, so "ends after 3"
+                # prints three times, and an end date that falls before the
+                # next slot means this run was the last one.
+                if _has_ended(job, runs, next_run):
+                    conn.execute(
+                        "UPDATE print_jobs SET status = 'done', "
+                        "last_run_at = datetime('now') WHERE id = ?",
+                        (job_id,),
+                    )
+                    _cleanup_payload_files(payload)
+                else:
+                    conn.execute(
+                        """
+                        UPDATE print_jobs
+                        SET status = 'pending', run_at = ?, last_run_at = datetime('now'), error = NULL
+                        WHERE id = ?
+                        """,
+                        (next_run.isoformat(timespec="seconds"), job_id),
+                    )
         else:
             conn.execute(
                 "UPDATE print_jobs SET status = 'done', last_run_at = datetime('now') WHERE id = ?",
                 (job_id,),
             )
             _cleanup_payload_files(payload)
+
+    # Retention also runs on the worker's tick, but a manual "Run queue now"
+    # doesn't wait for one — and auto-clear reads as broken if a finished job
+    # lingers for up to POLL_SECONDS after it printed.
+    prune_finished_jobs()
 
 
 def _execute(kind: str, payload: dict) -> None:
@@ -380,7 +449,7 @@ def _execute(kind: str, payload: dict) -> None:
         image = printer.image_from_upload(_read_upload(payload["file"]))
         actions.print_image(image)
     elif kind == "pdf":
-        actions.print_pdf(_read_upload(payload["file"]))
+        actions.print_pdf(_read_upload(payload["file"]), payload.get("crop"))
     elif kind == "ics":
         events = ics_import.parse_ics(_read_upload(payload["file"]))
         actions.print_ics(

@@ -3,11 +3,13 @@ import secrets
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import config, db, print_queue
+from app import config, db, print_queue, printer
+from app import settings as settings_store
 from app.routers import (
     content as content_router,
     history as history_router,
@@ -55,10 +57,24 @@ app.include_router(queue_router.router)
 app.include_router(content_router.router)
 
 
+@app.exception_handler(printer.PrinterUnavailable)
+def printer_unavailable(request: Request, exc: printer.PrinterUnavailable):
+    """Turn a dead printer into a 503 that says so.
+
+    Without this the OSError from `os.open` becomes a bare 500 and the UI
+    shows "Request failed (500)" — which is what you get when the printer is
+    simply switched off, i.e. the single most common failure there is.
+    """
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc), "device": exc.device},
+    )
+
+
 @app.get("/health")
 def health():
     return {
         "status": "ok",
-        "printer_backend": config.PRINTER_BACKEND,
+        "printer_backend": settings_store.printer_backend(),
         "build_date": config.get_build_date(),
     }

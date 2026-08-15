@@ -1,10 +1,13 @@
 import { Box, Container, Group, Select, Stack, Text, Title } from "@mantine/core";
-import { IconLogout, IconSettings } from "@tabler/icons-react";
-import { useRef, useState, type ReactNode } from "react";
+import { IconHelp, IconLogout, IconSettings } from "@tabler/icons-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useBootstrap, useStrings } from "../AppContext";
+import { registerSettingsOpener } from "../settingsOpener";
 import { ICON_SIZE, ICON_STROKE } from "../theme";
+import { HelpModal } from "./HelpModal";
 import { SettingsModal } from "./settings/SettingsModal";
+import { SetupWizard } from "./settings/SetupWizard";
 import { IconActionButton } from "./ui/IconActionButton";
 import { ConfirmModal } from "./ui/PromptModals";
 
@@ -73,24 +76,47 @@ export function PageShell({
 /** The top-bar actions for the main page: settings, and logout when enabled. */
 export function MainPageActions() {
   const t = useStrings();
-  const { auth_enabled, open_settings } = useBootstrap();
+  const boot = useBootstrap();
+  const { auth_enabled, open_settings } = boot;
 
   // `/settings` is still a real URL — it now serves the main page with this
   // flag set, so old bookmarks land on the modal instead of a dead route.
   const [settingsOpen, setSettingsOpen] = useState(open_settings ?? false);
+  const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const logoutForm = useRef<HTMLFormElement>(null);
+  // A fresh database — or one just reset — has setup_done false, which is the
+  // only trigger for the wizard.
+  const [setupOpen, setSetupOpen] = useState(!(boot.settings?.setup_done ?? true));
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  // Lets any panel deep-link into a settings tab — see settingsOpener.ts.
+  useEffect(() => {
+    registerSettingsOpener((tab) => {
+      setSettingsTab(tab);
+      setSettingsOpen(true);
+    });
+    return () => registerSettingsOpener(null);
+  }, []);
 
   return (
     <>
+      <IconActionButton label={t("help_title")} onClick={() => setHelpOpen(true)}>
+        <IconHelp size={ICON_SIZE.lg} stroke={ICON_STROKE} />
+      </IconActionButton>
+      <HelpModal opened={helpOpen} onClose={() => setHelpOpen(false)} />
+
       <IconActionButton
         label={t("settings")}
         onClick={() => setSettingsOpen(true)}
       >
         <IconSettings size={ICON_SIZE.lg} stroke={ICON_STROKE} />
       </IconActionButton>
+      <SetupWizard opened={setupOpen} onDone={() => setSetupOpen(false)} />
+
       <SettingsModal
         opened={settingsOpen}
+        initialTab={settingsTab}
         onClose={() => setSettingsOpen(false)}
       />
 

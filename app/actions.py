@@ -6,7 +6,7 @@ from app import snippets as snippets_store
 
 def print_text(text: str) -> None:
     printer.print_text(text)
-    history.add_entry("text", preview_text=text)
+    history.add_entry("text", preview_text=text, payload={"text": text})
 
 
 def print_image(image: Image.Image) -> None:
@@ -14,19 +14,25 @@ def print_image(image: Image.Image) -> None:
     history.add_entry("image", preview_image=image)
 
 
-def print_pdf(pdf_bytes: bytes) -> None:
-    images = printer.print_pdf(pdf_bytes)
+def print_pdf(pdf_bytes: bytes, crop: dict | None = None) -> None:
+    images = printer.print_pdf(pdf_bytes, crop)
     history.add_entry("pdf", preview_image=images[0] if images else None)
 
 
 def print_code(data: str, code_format: str, symbology: str) -> None:
     printer.print_code(data, code_format, symbology)
-    history.add_entry("code", preview_text=f"{code_format}: {data}")
+    history.add_entry(
+        "code",
+        preview_text=f"{code_format}: {data}",
+        payload={"data": data, "format": code_format, "symbology": symbology},
+    )
 
 
 def print_richtext(blocks: list[dict]) -> None:
     printer.print_richtext(blocks)
-    history.add_entry("richtext", preview_text=richtext.plain_text(blocks))
+    history.add_entry(
+        "richtext", preview_text=richtext.plain_text(blocks), payload={"blocks": blocks}
+    )
 
 
 def print_composition(parts: list[dict], images: dict) -> None:
@@ -49,7 +55,9 @@ def print_random(
     user approved *that* one, so re-rolling here would print something else."""
     text = text or content.random_surprise(kind, lang, category)
     printer.print_text(text)
-    history.add_entry("random", preview_text=text)
+    # Stored as text: the surprise that was printed is a specific one, and
+    # saving it should keep that item rather than roll a new one.
+    history.add_entry("random", preview_text=text, payload={"text": text})
 
 
 def _checklist_preview(title: str | None, items: list[dict]) -> str:
@@ -62,7 +70,11 @@ def _checklist_preview(title: str | None, items: list[dict]) -> str:
 
 def print_checklist(title: str | None, items: list[dict], mode: str, lang: str) -> None:
     printer.print_checklist(title, items, mode, lang)
-    history.add_entry("checklist", preview_text=_checklist_preview(title, items))
+    history.add_entry(
+        "checklist",
+        preview_text=_checklist_preview(title, items),
+        payload={"title": title, "items": items, "mode": mode},
+    )
 
 
 def _ics_preview(events: list[dict], mode: str) -> str:

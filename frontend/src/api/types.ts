@@ -33,6 +33,8 @@ export type HistoryEntry = {
   kind: string;
   preview_text: string | null;
   has_image: boolean;
+  /** True when the entry kept enough to be saved as a snippet. */
+  can_snippet: boolean;
   created_at: string;
 };
 
@@ -54,6 +56,9 @@ export type QueueJob = {
   recurrence_time: string | null;
   /** Weekdays 1-7 (Mon-Sun) for weekly, days of month for monthly. */
   recurrence_days: number[] | null;
+  ends_after: number | null;
+  ends_at: string | null;
+  run_count: number;
   /**
    * Server-computed: true when the job runs on its own trigger, false when it
    * waits for "Run queue now". Trusted rather than re-derived here, so this
@@ -77,6 +82,16 @@ export type IcsMode = "single" | "separate" | "day";
 export type AgendaOverview = "none" | "week" | "month";
 export type AgendaOrientation = "vertical" | "horizontal";
 
+/** Styling for the header/footer text — one rich-text block's worth. */
+export type FrameStyle = {
+  level: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  tint: Tint;
+  align: Align;
+};
+
 export type PrinterSettings = {
   header_text: string | null;
   footer_text: string | null;
@@ -93,6 +108,17 @@ export type PrinterSettings = {
   print_delay_seconds: number;
   retention_max_items: number;
   retention_max_age_days: number;
+  queue_auto_clear: boolean;
+  /** null means the plain centred frame that predates styling. */
+  header_style: FrameStyle | null;
+  footer_style: FrameStyle | null;
+  /** "file" (real device) or "dummy" (nothing is sent to hardware). */
+  printer_backend: string;
+  printer_device: string;
+  /** false shows the first-run wizard — see SetupWizard. */
+  setup_done: boolean;
+  auth_enabled: boolean;
+  has_password: boolean;
 };
 
 export type CodeFormat = "qr" | "barcode";
@@ -158,6 +184,8 @@ export type PreviewRequest = {
   orientation?: AgendaOrientation;
   snippet_id?: number;
   file?: File | null;
+  /** JSON crop box (fractions), for a PDF cropped before upload. */
+  crop?: string | null;
 };
 
 export type Recurrence = "daily" | "weekly" | "monthly";
@@ -169,6 +197,9 @@ export type QueueOptions = {
   recurrence?: Recurrence | null;
   recurrence_time?: string | null;
   recurrence_days?: number[] | null;
+  /** Repeating jobs only: stop after this many runs, or at this time. */
+  ends_after?: number | null;
+  ends_at?: string | null;
 };
 
 export type PrintResponse =

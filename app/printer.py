@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import threading
 import time
@@ -15,6 +16,19 @@ from app import agenda, codes, config, i18n, richtext, settings
 
 class PrintCancelled(Exception):
     """Raised when a print job is aborted mid-transfer via cancel_current()."""
+
+
+class PrinterUnavailable(Exception):
+    """The printer could not be written to — off, unplugged, or misconfigured.
+
+    Carries a message aimed at whoever is standing next to the printer rather
+    than at a log file: "Request failed (500)" is true and useless, and the
+    overwhelmingly likely cause is that the thing is switched off.
+    """
+
+    def __init__(self, message: str, device: str):
+        super().__init__(message)
+        self.device = device
 
 
 # Only one physical printer, so only one job is ever actually in flight —
@@ -86,8 +100,9 @@ def _build(build_fn) -> bytes:
 
 
 def _send(data: bytes) -> None:
-    if config.PRINTER_BACKEND == "dummy":
+    if settings.printer_backend() == "dummy":
         return
+    device = settings.printer_device()
 
     # A single unbuffered write, not python-escpos's own File backend (which
     # opens the device with Python's default ~8KB buffered I/O). On real
@@ -100,17 +115,69 @@ def _send(data: bytes) -> None:
     # os.write call) also gives cancel_current() somewhere to take effect —
     # a big job can be aborted between chunks instead of only before/after.
     chunk_size = 32 * 1024
-    fd = os.open(config.PRINTER_DEVICE, os.O_WRONLY)
+    try:
+        fd = os.open(device, os.O_WRONLY)
+    except FileNotFoundError as exc:
+        raise PrinterUnavailable(
+            f"No printer at {device}. Check that it is plugged in and switched "
+            "on, or set a different device in Settings.",
+            device,
+        ) from exc
+    except PermissionError as exc:
+        raise PrinterUnavailable(
+            f"No permission to write to {device}. The container needs access to "
+            "the device node (see the README's device mapping).",
+            device,
+        ) from exc
+    except OSError as exc:
+        raise PrinterUnavailable(f"Could not open {device}: {exc}", device) from exc
+
     try:
         for offset in range(0, len(data), chunk_size):
             if _cancel_event.is_set():
                 raise PrintCancelled()
             chunk = memoryview(data)[offset : offset + chunk_size]
             while chunk:
-                n = os.write(fd, chunk)
+                try:
+                    n = os.write(fd, chunk)
+                except OSError as exc:
+                    # Mid-transfer failures are almost always the printer being
+                    # switched off or out of paper, not a bug in the payload.
+                    raise PrinterUnavailable(
+                        f"The printer stopped responding ({exc.strerror or exc}). "
+                        "Check power, paper and the cable.",
+                        device,
+                    ) from exc
                 chunk = chunk[n:]
     finally:
         os.close(fd)
+
+
+_FRAME_STYLE_DEFAULTS = {
+    "level": 0,
+    "bold": False,
+    "italic": False,
+    "underline": False,
+    "tint": "black",
+    "align": "center",
+}
+
+
+def _frame_style(raw) -> dict | None:
+    """A stored header/footer style as a rich-text block, or None for plain.
+
+    None means "print it the way it was printed before styling existed", so an
+    install that never touches the new controls is byte-identical.
+    """
+    if not raw:
+        return None
+    try:
+        style = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(style, dict):
+        return None
+    return {**_FRAME_STYLE_DEFAULTS, **style}
 
 
 def frame_job(content_fn, settings_row: dict, width: int):
@@ -131,11 +198,33 @@ def frame_job(content_fn, settings_row: dict, width: int):
             p.set(align="center")
             p.image(_fit_to_width(Image.open(path), width))
 
+    def _frame_text(p, text_column: str, style_column: str) -> None:
+        """The header or footer, styled by its saved style if it has one.
+
+        The style is the same shape as one rich-text block, so the frame gets
+        italic and grey by going through the same bitmap fallback as the text
+        tab rather than a second styling implementation. With no style saved,
+        this emits exactly what it always did: centred, plain.
+        """
+        raw = settings_row[text_column]
+        if not raw:
+            return
+        text = _render_template(raw)
+        style = _frame_style(settings_row.get(style_column))
+        if style is None:
+            p.set(align="center", bold=False, double_width=False)
+            p.text(text + "\n")
+            return
+
+        blocks = [{**style, "text": line} for line in text.split("\n")]
+        if _text_needs_bitmap(blocks):
+            p.image(_fit_to_width(richtext.render(blocks, width), width))
+        else:
+            _emit_native_text(p, blocks)
+
     def wrapped(p):
         _logo(p, "header_logo_path")
-        if settings_row["header_text"]:
-            p.set(align="center", bold=False, double_width=False)
-            p.text(_render_template(settings_row["header_text"]) + "\n")
+        _frame_text(p, "header_text", "header_style")
 
         p.set(
             align=settings_row["default_align"],
@@ -144,9 +233,7 @@ def frame_job(content_fn, settings_row: dict, width: int):
         )
         content_fn(p)
 
-        if settings_row["footer_text"]:
-            p.set(align="center", bold=False, double_width=False)
-            p.text(_render_template(settings_row["footer_text"]) + "\n")
+        _frame_text(p, "footer_text", "footer_style")
         _logo(p, "footer_logo_path")
 
         if settings_row["auto_cut"]:
@@ -309,7 +396,36 @@ def print_images(images: list[Image.Image]) -> None:
     _print_job(images_content(images), label=f"{len(images)} image(s)")
 
 
-def _render_pdf_pages(pdf_bytes: bytes) -> list[Image.Image]:
+def crop_fractions(image: Image.Image, crop: dict | None) -> Image.Image:
+    """Crop to a box given as fractions of the image (0-1), or return it as-is.
+
+    Fractions rather than pixels because the box is chosen in the browser
+    against a preview at whatever size fits the screen, while the crop is
+    applied here against a 180-dpi render. Anything degenerate is ignored
+    rather than raising: a bad box must not be able to fail a print.
+    """
+    if not crop:
+        return image
+    try:
+        left = max(0.0, min(1.0, float(crop["x"])))
+        top = max(0.0, min(1.0, float(crop["y"])))
+        right = max(left, min(1.0, left + float(crop["w"])))
+        bottom = max(top, min(1.0, top + float(crop["h"])))
+    except (KeyError, TypeError, ValueError):
+        return image
+
+    box = (
+        int(left * image.width),
+        int(top * image.height),
+        int(right * image.width),
+        int(bottom * image.height),
+    )
+    if box[2] - box[0] < 1 or box[3] - box[1] < 1:
+        return image
+    return image.crop(box)
+
+
+def _render_pdf_pages(pdf_bytes: bytes, crop: dict | None = None) -> list[Image.Image]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
         images = []
@@ -317,7 +433,8 @@ def _render_pdf_pages(pdf_bytes: bytes) -> list[Image.Image]:
             pix = page.get_pixmap(dpi=180)
             mode = "RGBA" if pix.alpha else "RGB"
             image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
-            images.append(_fit_to_width(image))
+            # Cropped before fitting, so the kept region fills the paper width.
+            images.append(_fit_to_width(crop_fractions(image, crop)))
         return images
     finally:
         doc.close()
@@ -345,10 +462,10 @@ def pdf_page_image(
         doc.close()
 
 
-def print_pdf(pdf_bytes: bytes) -> list[Image.Image]:
+def print_pdf(pdf_bytes: bytes, crop: dict | None = None) -> list[Image.Image]:
     """Prints the PDF and returns the rendered page images (used for a
     preview thumbnail by callers, so the PDF isn't rendered twice)."""
-    images = _render_pdf_pages(pdf_bytes)
+    images = _render_pdf_pages(pdf_bytes, crop)
 
     def content(p):
         for image in images:

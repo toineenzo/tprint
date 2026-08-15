@@ -1,6 +1,7 @@
 from fastapi import HTTPException, Request, status
 
 from app import config
+from app import settings as settings_store
 
 
 def has_valid_session(request: Request) -> bool:
@@ -13,9 +14,18 @@ def has_valid_token(request: Request) -> bool:
     return request.headers.get("Authorization") == f"Bearer {config.PRINT_API_TOKEN}"
 
 
+def auth_enabled() -> bool:
+    """The effective setting: the stored one if set, else the env var.
+
+    Read through here rather than from config directly, so turning the login
+    on or off in the setup wizard takes effect everywhere at once.
+    """
+    return settings_store.auth_enabled()
+
+
 def web_page_authed(request: Request) -> bool:
     """Whether a browser page request should render, vs. redirect to /login."""
-    if not config.AUTH_ENABLED:
+    if not auth_enabled():
         return True
     return has_valid_session(request)
 
@@ -32,7 +42,7 @@ def require_api_auth(request: Request) -> None:
         return
     if has_valid_token(request):
         return
-    if not config.AUTH_ENABLED and not config.PRINT_API_TOKEN:
+    if not auth_enabled() and not config.PRINT_API_TOKEN:
         return
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
 
@@ -52,7 +62,7 @@ def require_session_auth(request: Request) -> None:
     """
     if has_valid_session(request):
         return
-    if not config.AUTH_ENABLED:
+    if not auth_enabled():
         return
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

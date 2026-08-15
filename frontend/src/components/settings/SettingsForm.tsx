@@ -1,6 +1,6 @@
 import {
   Anchor,
-  Checkbox,
+  Switch,
   Divider,
   FileInput,
   Group,
@@ -8,24 +8,38 @@ import {
   Loader,
   NumberInput,
   SegmentedControl,
-  Select,
   Stack,
   Table,
   Tabs,
   Text,
   Textarea,
 } from "@mantine/core";
-import { IconDeviceFloppy, IconPhoto, IconTrash } from "@tabler/icons-react";
+import { useMediaQuery } from "@mantine/hooks";
+import {
+  IconDeviceFloppy,
+  IconHistory,
+  IconInfoCircle,
+  IconLayoutBoardSplit,
+  IconPhoto,
+  IconPlugConnected,
+  IconPrinter,
+  IconSparkles,
+  IconTrash,
+} from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 
 import { useStrings } from "../../AppContext";
 import { api } from "../../api/client";
-import type { AboutInfo, Align, PrinterSettings } from "../../api/types";
+import type { AboutInfo, PrinterSettings } from "../../api/types";
 import { useSubmit } from "../../hooks/useSubmit";
 import { ICON_SIZE, ICON_STROKE, ROLE } from "../../theme";
+import { AlignPicker } from "../ui/AlignPicker";
+import { CropModal } from "../ui/CropModal";
+import { DEFAULT_FRAME_STYLE, FrameStyleRow, isPlainFrame } from "./FrameStyleRow";
 import { DangerButton, PrimaryButton } from "../ui/Buttons";
 import { ConfirmModal } from "../ui/PromptModals";
 import { ContentManager } from "./ContentManager";
+import { PrinterPanel } from "./PrinterPanel";
 
 /** Widths that get a named button; anything else is entered as raw dots. */
 const PAPER_PRESETS = [576, 384];
@@ -71,6 +85,10 @@ function SettingsPreview({ refreshKey }: { refreshKey: number }) {
           src={url}
           alt={t("settings_preview")}
           fit="contain"
+          // Capped at roughly a receipt's own width: stretched to the panel it
+          // upscales a 576-dot strip into something that looks nothing like
+          // what comes out of the printer.
+          maw={320}
           style={{
             background: "#fff",
             border: "1px solid var(--mantine-color-default-border)",
@@ -141,9 +159,11 @@ function AboutSection() {
  */
 export function SettingsForm({
   initial,
+  initialTab,
   onSaved,
 }: {
   initial: PrinterSettings;
+  initialTab?: string;
   onSaved: (saved: PrinterSettings) => void;
 }) {
   const t = useStrings();
@@ -157,7 +177,9 @@ export function SettingsForm({
   // Bumped after every save so the preview panel refetches; the endpoint
   // renders from the stored settings, not from this form's state.
   const [previewKey, setPreviewKey] = useState(0);
-  const [tab, setTab] = useState<string | null>("frame");
+  /** Which logo is being cropped, if either — see CropModal. */
+  const [croppingLogo, setCroppingLogo] = useState<"header" | "footer" | null>(null);
+  const [tab, setTab] = useState<string | null>(initialTab ?? "frame");
 
   const patch = (next: Partial<PrinterSettings>) =>
     setValues((current) => ({ ...current, ...next }));
@@ -180,6 +202,15 @@ export function SettingsForm({
     form.set("print_delay_seconds", String(values.print_delay_seconds));
     form.set("retention_max_items", String(values.retention_max_items));
     form.set("retention_max_age_days", String(values.retention_max_age_days));
+    form.set("queue_auto_clear", String(values.queue_auto_clear));
+    // A default style is saved as *no* style, keeping the frame on the crisp
+    // native path — see printer._frame_style.
+    if (values.header_style && !isPlainFrame(values.header_style)) {
+      form.set("header_style", JSON.stringify(values.header_style));
+    }
+    if (values.footer_style && !isPlainFrame(values.footer_style)) {
+      form.set("footer_style", JSON.stringify(values.footer_style));
+    }
 
     const saved = await submit(
       () => api.postForm<PrinterSettings>("/api/settings", form),
@@ -201,19 +232,54 @@ export function SettingsForm({
   // Content, About and Reset are self-contained and don't touch `values`.
   const fieldTab = tab === "frame" || tab === "output" || tab === "retention";
 
+  // A sidebar next to a form panel needs width the phone doesn't have — on a
+  // narrow screen the tabs go back on top and the panel gets the whole width.
+  const narrow = useMediaQuery("(max-width: 48em)");
+
   return (
     <Tabs
-      orientation="vertical"
+      orientation={narrow ? "horizontal" : "vertical"}
       value={tab}
       onChange={setTab}
       variant="pills"
     >
-      <Tabs.List mr="md">
-        <Tabs.Tab value="frame">{t("settings_tab_frame")}</Tabs.Tab>
-        <Tabs.Tab value="output">{t("settings_tab_output")}</Tabs.Tab>
-        <Tabs.Tab value="retention">{t("settings_retention")}</Tabs.Tab>
-        <Tabs.Tab value="content">{t("settings_tab_content")}</Tabs.Tab>
-        <Tabs.Tab value="about">{t("about_title")}</Tabs.Tab>
+      <Tabs.List mr={narrow ? 0 : "md"} mb={narrow ? "md" : 0}>
+        <Tabs.Tab
+          value="frame"
+          leftSection={<IconLayoutBoardSplit size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+        >
+          {t("settings_tab_frame")}
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="output"
+          leftSection={<IconPrinter size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+        >
+          {t("settings_tab_output")}
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="retention"
+          leftSection={<IconHistory size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+        >
+          {t("settings_tab_retention")}
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="printer"
+          leftSection={<IconPlugConnected size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+        >
+          {t("settings_tab_printer")}
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="content"
+          leftSection={<IconSparkles size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+        >
+          {t("settings_tab_content")}
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="about"
+          leftSection={<IconInfoCircle size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+        >
+          {t("about_title")}
+        </Tabs.Tab>
       </Tabs.List>
 
       <Stack gap="md" style={{ flex: 1, minWidth: 0 }}>
@@ -231,6 +297,10 @@ export function SettingsForm({
               value={values.header_text ?? ""}
               onChange={(event) => patch({ header_text: event.currentTarget.value })}
             />
+            <FrameStyleRow
+              value={values.header_style ?? DEFAULT_FRAME_STYLE}
+              onChange={(header_style) => patch({ header_style })}
+            />
 
             <Textarea
               label={t("settings_footer_text")}
@@ -240,6 +310,10 @@ export function SettingsForm({
               value={values.footer_text ?? ""}
               onChange={(event) => patch({ footer_text: event.currentTarget.value })}
             />
+            <FrameStyleRow
+              value={values.footer_style ?? DEFAULT_FRAME_STYLE}
+              onChange={(footer_style) => patch({ footer_style })}
+            />
 
             <Stack gap="xs">
               {values.has_logo && (
@@ -248,7 +322,7 @@ export function SettingsForm({
                     {t("settings_current_logo")}
                   </Text>
                   <Image src="/api/settings/logo" alt="" h={40} w="auto" fit="contain" />
-                  <Checkbox
+                  <Switch
                     label={t("settings_remove_logo")}
                     checked={removeLogo}
                     onChange={(event) => setRemoveLogo(event.currentTarget.checked)}
@@ -263,7 +337,12 @@ export function SettingsForm({
                 clearable
                 disabled={removeLogo}
                 value={logo}
-                onChange={setLogo}
+                onChange={(next) => {
+                  setLogo(next);
+                  // A logo is nearly always a crop away from being right, and
+                  // the printer is only ~570 dots wide — offer it up front.
+                  if (next) setCroppingLogo("header");
+                }}
                 leftSection={<IconPhoto size={ICON_SIZE.md} stroke={ICON_STROKE} />}
               />
             </Stack>
@@ -275,7 +354,7 @@ export function SettingsForm({
                     {t("settings_current_footer_logo")}
                   </Text>
                   <Image src="/api/settings/footer-logo" alt="" h={40} w="auto" fit="contain" />
-                  <Checkbox
+                  <Switch
                     label={t("settings_remove_logo")}
                     checked={removeFooterLogo}
                     onChange={(event) => setRemoveFooterLogo(event.currentTarget.checked)}
@@ -290,7 +369,10 @@ export function SettingsForm({
                 clearable
                 disabled={removeFooterLogo}
                 value={footerLogo}
-                onChange={setFooterLogo}
+                onChange={(next) => {
+                  setFooterLogo(next);
+                  if (next) setCroppingLogo("footer");
+                }}
                 leftSection={<IconPhoto size={ICON_SIZE.md} stroke={ICON_STROKE} />}
               />
             </Stack>
@@ -303,12 +385,12 @@ export function SettingsForm({
               <Text size="sm" c="dimmed">
                 {t("settings_text_style")}
               </Text>
-              <Checkbox
+              <Switch
                 label={t("settings_bold")}
                 checked={values.default_bold}
                 onChange={(event) => patch({ default_bold: event.currentTarget.checked })}
               />
-              <Checkbox
+              <Switch
                 label={t("settings_double_width")}
                 checked={values.default_double_width}
                 onChange={(event) =>
@@ -317,17 +399,15 @@ export function SettingsForm({
               />
             </Stack>
 
-            <Select
-              label={t("settings_align")}
-              value={values.default_align}
-              allowDeselect={false}
-              onChange={(value) => patch({ default_align: (value as Align) ?? "left" })}
-              data={[
-                { value: "left", label: t("align_left") },
-                { value: "center", label: t("align_center") },
-                { value: "right", label: t("align_right") },
-              ]}
-            />
+            <Stack gap="xs">
+              <Text size="sm" fw={600}>
+                {t("settings_align")}
+              </Text>
+              <AlignPicker
+                value={values.default_align}
+                onChange={(align) => patch({ default_align: align })}
+              />
+            </Stack>
 
             <Divider my="xs" />
 
@@ -362,7 +442,7 @@ export function SettingsForm({
                   patch({ paper_width_px: Number(value) || values.paper_width_px })
                 }
               />
-              <Checkbox
+              <Switch
                 label={t("settings_auto_cut")}
                 description={t("settings_auto_cut_hint")}
                 checked={values.auto_cut}
@@ -376,7 +456,7 @@ export function SettingsForm({
               <Text size="sm" fw={600}>
                 {t("settings_behaviour")}
               </Text>
-              <Checkbox
+              <Switch
                 label={t("settings_confirm_print")}
                 description={t("settings_confirm_print_hint")}
                 checked={values.confirm_before_print}
@@ -384,7 +464,7 @@ export function SettingsForm({
                   patch({ confirm_before_print: event.currentTarget.checked })
                 }
               />
-              <Checkbox
+              <Switch
                 label={t("settings_surprise_preview")}
                 description={t("settings_surprise_preview_hint")}
                 checked={values.surprise_preview}
@@ -428,7 +508,19 @@ export function SettingsForm({
                 patch({ retention_max_age_days: Number(value) || 0 })
               }
             />
+            <Switch
+              label={t("settings_queue_auto_clear")}
+              description={t("settings_queue_auto_clear_hint")}
+              checked={values.queue_auto_clear}
+              onChange={(event) =>
+                patch({ queue_auto_clear: event.currentTarget.checked })
+              }
+            />
           </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="printer">
+          <PrinterPanel settings={values} onSaved={(next) => { setValues(next); onSaved(next); }} />
         </Tabs.Panel>
 
         <Tabs.Panel value="content">
@@ -459,6 +551,20 @@ export function SettingsForm({
 
             <SettingsPreview refreshKey={previewKey} />
           </>
+        )}
+
+        {croppingLogo && (
+          <CropModal
+            file={croppingLogo === "header" ? logo : footerLogo}
+            onCancel={() => setCroppingLogo(null)}
+            onDone={({ cropped }) => {
+              if (cropped) {
+                if (croppingLogo === "header") setLogo(cropped);
+                else setFooterLogo(cropped);
+              }
+              setCroppingLogo(null);
+            }}
+          />
         )}
       </Stack>
     </Tabs>

@@ -22,6 +22,21 @@ export function toDateOnly(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/**
+ * A checklist due date as it should be printed: "YYYY-MM-DD", plus " HH:MM"
+ * when a time was actually chosen.
+ *
+ * Midnight means "no time given" — the picker fills in 00:00 for a date-only
+ * choice, and printing "(due: 2026-08-06 00:00)" on every dateless task is
+ * noise. A task genuinely due at midnight prints as the date, which is the
+ * same thing to anyone reading it off paper.
+ */
+export function toDueString(date: Date): string {
+  const day = toDateOnly(date);
+  if (date.getHours() === 0 && date.getMinutes() === 0) return day;
+  return `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 /** Render a stored timestamp for display, tolerating the "T" separator. */
 export function displayTimestamp(value: string): string {
   return value.replace("T", " ");

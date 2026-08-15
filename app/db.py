@@ -40,7 +40,15 @@ CREATE TABLE IF NOT EXISTS settings (
     surprise_preview INTEGER NOT NULL DEFAULT 0,
     print_delay_seconds INTEGER NOT NULL DEFAULT 0,
     retention_max_items INTEGER NOT NULL DEFAULT 50,
-    retention_max_age_days INTEGER NOT NULL DEFAULT 0
+    retention_max_age_days INTEGER NOT NULL DEFAULT 0,
+    queue_auto_clear INTEGER NOT NULL DEFAULT 0,
+    header_style TEXT,
+    footer_style TEXT,
+    printer_backend TEXT,
+    printer_device TEXT,
+    setup_done INTEGER NOT NULL DEFAULT 0,
+    password_hash TEXT,
+    auth_enabled INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS print_history (
@@ -48,6 +56,10 @@ CREATE TABLE IF NOT EXISTS print_history (
     kind TEXT NOT NULL,
     preview_text TEXT,
     preview_image_path TEXT,
+    -- What was printed, when it can be reconstructed from data alone (text,
+    -- rich text, checklist, code). NULL for anything whose source was a file:
+    -- only a thumbnail is kept, so there is nothing to reprint from.
+    payload TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -86,6 +98,9 @@ CREATE TABLE IF NOT EXISTS print_jobs (
     recurrence TEXT,
     recurrence_time TEXT,
     recurrence_days TEXT,
+    ends_after INTEGER,
+    ends_at TEXT,
+    run_count INTEGER NOT NULL DEFAULT 0,
     last_run_at TEXT,
     error TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -162,6 +177,23 @@ def _migrate_snippets(conn: sqlite3.Connection) -> None:
     _rebuild_snippets(conn, lambda old: old["file_paths"], carry_payload="payload" in cols)
 
 
+def _migrate_print_history(conn: sqlite3.Connection) -> None:
+    """Add `payload` to an existing history table.
+
+    Additive, with NULL meaning "no reprintable source", which is exactly what
+    every row written before this column existed has.
+    """
+    existing = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'print_history'"
+    ).fetchone()
+    if not existing:
+        return
+
+    cols = [row["name"] for row in conn.execute("PRAGMA table_info(print_history)").fetchall()]
+    if "payload" not in cols:
+        conn.execute("ALTER TABLE print_history ADD COLUMN payload TEXT")
+
+
 def _migrate_print_jobs(conn: sqlite3.Connection) -> None:
     """Add `recurrence_days` and backfill it from each recurring job's anchor.
 
@@ -182,6 +214,19 @@ def _migrate_print_jobs(conn: sqlite3.Connection) -> None:
         return  # SCHEMA below creates it already carrying the column
 
     cols = [row["name"] for row in conn.execute("PRAGMA table_info(print_jobs)").fetchall()]
+
+    # The end-rule columns are purely additive with defaults that mean "no end
+    # rule", so an existing repeating job keeps repeating forever exactly as it
+    # did. Added before the early return below: a database that already has
+    # recurrence_days still needs these.
+    for name, definition in (
+        ("ends_after", "INTEGER"),
+        ("ends_at", "TEXT"),
+        ("run_count", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE print_jobs ADD COLUMN {name} {definition}")
+
     if "recurrence_days" in cols:
         return
 
@@ -219,6 +264,23 @@ _SETTINGS_COLUMNS = (
     ("print_delay_seconds", "INTEGER NOT NULL DEFAULT 0"),
     ("retention_max_items", "INTEGER NOT NULL DEFAULT 50"),
     ("retention_max_age_days", "INTEGER NOT NULL DEFAULT 0"),
+    ("queue_auto_clear", "INTEGER NOT NULL DEFAULT 0"),
+    # JSON, shaped like one rich-text block. NULL means the plain centred
+    # header/footer that predates styling — see printer._frame_style.
+    ("header_style", "TEXT"),
+    ("footer_style", "TEXT"),
+    # NULL means "follow the PRINTER_BACKEND / PRINTER_DEVICE env vars", which
+    # is what they controlled outright before the connection became editable.
+    ("printer_backend", "TEXT"),
+    ("printer_device", "TEXT"),
+    # 0 shows the first-run wizard. Fresh databases get it from the schema
+    # above; an existing install is marked done by _migrate_settings, since
+    # it is self-evidently already set up.
+    ("setup_done", "INTEGER NOT NULL DEFAULT 0"),
+    # Both nullable, both meaning "follow the environment": APP_PASSWORD and
+    # AUTH_ENABLED keep working untouched until the wizard sets these.
+    ("password_hash", "TEXT"),
+    ("auth_enabled", "INTEGER"),
 )
 
 
@@ -240,6 +302,10 @@ def _migrate_settings(conn: sqlite3.Connection) -> None:
     for name, definition in _SETTINGS_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE settings ADD COLUMN {name} {definition}")
+            if name == "setup_done":
+                # An upgrade is not a first run: this database already has the
+                # user's settings in it, so the wizard must not appear.
+                conn.execute("UPDATE settings SET setup_done = 1")
 
 
 def init_db() -> None:
@@ -250,6 +316,7 @@ def init_db() -> None:
     with get_conn() as conn:
         _migrate_snippets(conn)
         _migrate_print_jobs(conn)
+        _migrate_print_history(conn)
         _migrate_settings(conn)
         conn.executescript(SCHEMA)
         conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)")

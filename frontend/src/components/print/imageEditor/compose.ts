@@ -67,7 +67,12 @@ export type EditorState = {
   layout: Layout;
   /** Defaults to 1 so added items simply stack down the receipt. */
   columns: number;
+  /** Gap between columns, and the left/right margin. */
   padding: number;
+  /** Gap between rows, and the top/bottom margin. Independent of `padding`
+   *  because paper is narrow and tall: what looks right across a row rarely
+   *  looks right down the strip. */
+  paddingY: number;
   strokes: Stroke[];
 };
 
@@ -77,6 +82,7 @@ export const EMPTY_STATE: EditorState = {
   layout: "grid",
   columns: 1,
   padding: 8,
+  paddingY: 8,
   strokes: [],
 };
 
@@ -122,20 +128,27 @@ export function layoutPage(
   }
 
   const columns = Math.max(1, Math.floor(state.columns));
-  const pad = Math.max(0, state.padding);
-  const cell = Math.max(1, (pageWidth - pad * (columns + 1)) / columns);
+  const padX = Math.max(0, state.padding);
+  // Older states (and anything built before vertical spacing existed) fall
+  // back to the horizontal value, which is exactly what they used to use.
+  const padY = Math.max(0, state.paddingY ?? state.padding);
+  const cell = Math.max(1, (pageWidth - padX * (columns + 1)) / columns);
 
-  let y = pad;
+  let y = padY;
   for (let start = 0; start < state.items.length; start += columns) {
     const row = state.items.slice(start, start + columns);
     let rowHeight = 0;
     row.forEach((item, column) => {
       const natural = sizeOf(item);
-      const h = Math.max(1, (cell * natural.h) / natural.w);
-      placed.push({ item, x: pad + column * (cell + pad), y, w: cell, h });
+      // The cell is the *full* width an item may take; `scale` shrinks it
+      // within that, which is what the resize handle drags. 1 is the default,
+      // so a grid built before resizing existed lays out identically.
+      const w = Math.max(1, cell * item.scale);
+      const h = Math.max(1, (w * natural.h) / natural.w);
+      placed.push({ item, x: padX + column * (cell + padX), y, w, h });
       rowHeight = Math.max(rowHeight, h);
     });
-    y += rowHeight + pad;
+    y += rowHeight + padY;
   }
   return { placed, height: Math.ceil(y) || 1 };
 }

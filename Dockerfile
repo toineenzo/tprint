@@ -23,6 +23,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+# The wiki pages, for the in-app help when the real wiki can't be reached.
+COPY docs/wiki ./docs/wiki
 COPY --from=frontend /src/app/static/dist ./app/static/dist
 
 # Captures the moment this image was actually built (i.e. when Portainer

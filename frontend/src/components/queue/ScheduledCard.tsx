@@ -74,9 +74,14 @@ export function ScheduledCard() {
       title={t("scheduled_panel_title")}
       icon={<IconCalendarClock size={ICON_SIZE.lg} stroke={ICON_STROKE} />}
       action={
-        <Text size="sm" c="dimmed" ff="monospace" aria-live="off">
-          {formatClock(now)}
-        </Text>
+        <Group gap="xs" wrap="nowrap">
+          <Text size="xs" c="dimmed">
+            {t("queue_current_time")}
+          </Text>
+          <Text size="sm" c="dimmed" ff="monospace" aria-live="off">
+            {formatClock(now)}
+          </Text>
+        </Group>
       }
     >
       {scheduled.length === 0 ? (

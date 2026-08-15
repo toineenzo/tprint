@@ -1,4 +1,7 @@
+import hashlib
+import json
 import os
+import secrets
 import uuid
 
 from app import config, db, files
@@ -19,6 +22,9 @@ MAX_PAPER_WIDTH = 2048
 # A print can be spaced out by at most a minute. Longer would hold the print
 # lock — and therefore every other print — for an unreasonable time.
 MAX_PRINT_DELAY_SECONDS = 60
+
+# Enough to be slow for a guesser, fast enough that a login isn't noticeable.
+_PBKDF2_ROUNDS = 200_000
 
 
 def get_settings() -> dict:
@@ -62,7 +68,120 @@ def public_settings() -> dict:
         "print_delay_seconds": int(current["print_delay_seconds"]),
         "retention_max_items": int(current["retention_max_items"]),
         "retention_max_age_days": int(current["retention_max_age_days"]),
+        "queue_auto_clear": bool(current["queue_auto_clear"]),
+        "header_style": _style(current["header_style"]),
+        "footer_style": _style(current["footer_style"]),
+        "printer_backend": printer_backend(),
+        "printer_device": printer_device(),
+        "setup_done": bool(current["setup_done"]),
+        "auth_enabled": auth_enabled(),
+        "has_password": bool(current["password_hash"] or config.APP_PASSWORD),
     }
+
+
+def auth_enabled() -> bool:
+    """Whether the login page is in force. Stored value wins over the env var."""
+    stored = get_settings()["auth_enabled"]
+    return config.AUTH_ENABLED if stored is None else bool(stored)
+
+
+def _hash_password(plain: str) -> str:
+    """PBKDF2-SHA256, salted, from the standard library.
+
+    No new dependency for one password: this is a single-user self-hosted app
+    whose threat model is "someone finds the URL", not an account database.
+    """
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", plain.encode(), bytes.fromhex(salt), _PBKDF2_ROUNDS)
+    return f"pbkdf2${_PBKDF2_ROUNDS}${salt}${digest.hex()}"
+
+
+def verify_password(plain: str) -> bool:
+    """Check a login attempt against the stored password, else APP_PASSWORD.
+
+    The env var stays a valid credential when nothing is stored, so an install
+    that never opens the wizard keeps logging in exactly as before.
+    """
+    stored = get_settings()["password_hash"]
+    if stored:
+        try:
+            _, rounds, salt, expected = stored.split("$")
+            digest = hashlib.pbkdf2_hmac(
+                "sha256", plain.encode(), bytes.fromhex(salt), int(rounds)
+            )
+        except (ValueError, TypeError):
+            return False
+        return secrets.compare_digest(digest.hex(), expected)
+    if config.APP_PASSWORD:
+        return secrets.compare_digest(plain, config.APP_PASSWORD)
+    return False
+
+
+def set_auth(enabled: bool, password: str | None = None) -> None:
+    """Turn the login on/off and optionally set a new password.
+
+    Refuses to enable auth with no password anywhere — that would lock the app
+    with a credential nobody holds, which is a worse outcome than leaving it
+    as it was.
+    """
+    current = get_settings()
+    has_password = bool(password) or bool(current["password_hash"]) or bool(config.APP_PASSWORD)
+    if enabled and not has_password:
+        raise ValueError("set a password before turning the login on")
+
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE settings SET auth_enabled = ? WHERE id = 1", (int(enabled),)
+        )
+        if password:
+            conn.execute(
+                "UPDATE settings SET password_hash = ? WHERE id = 1",
+                (_hash_password(password),),
+            )
+
+
+def printer_backend() -> str:
+    """"file" (real hardware) or "dummy" (no device), from the DB or the env.
+
+    Stored settings win, the env var is the fallback — so an install that was
+    only ever configured through docker-compose keeps behaving identically
+    until someone changes it in the app.
+    """
+    stored = get_settings()["printer_backend"]
+    return stored or config.PRINTER_BACKEND
+
+
+def printer_device() -> str:
+    """The device node ESC/POS bytes are written to. Same fallback rule."""
+    stored = get_settings()["printer_device"]
+    return stored or config.PRINTER_DEVICE
+
+
+def set_connection(backend: str | None, device: str | None) -> None:
+    """Store the printer connection. Empty values mean "follow the env vars"."""
+    if backend and backend not in ("file", "dummy"):
+        raise ValueError("printer_backend must be 'file' or 'dummy'")
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE settings SET printer_backend = ?, printer_device = ? WHERE id = 1",
+            (backend or None, (device or "").strip() or None),
+        )
+
+
+def mark_setup_done(done: bool = True) -> None:
+    with db.get_conn() as conn:
+        conn.execute("UPDATE settings SET setup_done = ? WHERE id = 1", (int(done),))
+
+
+def _style(raw: str | None) -> dict | None:
+    """A stored frame style as JSON, or None. Bad JSON reads as "no style"."""
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def _logo_path(column: str) -> str | None:
@@ -83,6 +202,15 @@ def footer_logo_path() -> str | None:
     return _logo_path("footer_logo_path")
 
 
+def _clean_style(raw: str | None) -> str | None:
+    """Keep a submitted frame style only if it parses as a JSON object.
+
+    Anything else is stored as NULL, which prints the plain centred frame —
+    a broken style must never be able to break every receipt.
+    """
+    return json.dumps(_style(raw)) if _style(raw) else None
+
+
 def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
@@ -100,6 +228,9 @@ def update_settings(
     print_delay_seconds: int = 0,
     retention_max_items: int = 50,
     retention_max_age_days: int = 0,
+    queue_auto_clear: bool = False,
+    header_style: str | None = None,
+    footer_style: str | None = None,
 ) -> None:
     if default_align not in ("left", "center", "right"):
         raise ValueError("default_align must be 'left', 'center', or 'right'")
@@ -124,7 +255,8 @@ def update_settings(
                 default_bold = ?, default_double_width = ?,
                 paper_width_px = ?, auto_cut = ?, confirm_before_print = ?,
                 surprise_preview = ?, print_delay_seconds = ?,
-                retention_max_items = ?, retention_max_age_days = ?
+                retention_max_items = ?, retention_max_age_days = ?,
+                queue_auto_clear = ?, header_style = ?, footer_style = ?
             WHERE id = 1
             """,
             (
@@ -140,6 +272,9 @@ def update_settings(
                 delay,
                 max_items,
                 max_age,
+                int(queue_auto_clear),
+                _clean_style(header_style),
+                _clean_style(footer_style),
             ),
         )
 

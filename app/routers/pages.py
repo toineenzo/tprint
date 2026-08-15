@@ -25,7 +25,7 @@ def _shell(request: Request, page: str, lang: str, status_code: int = 200, **ext
         "languages": list(i18n.LANGUAGES),
         "native_names": i18n.NATIVE_NAMES,
         "strings": strings,
-        "auth_enabled": config.AUTH_ENABLED,
+        "auth_enabled": settings_store.auth_enabled(),
         "build_date": config.get_build_date(),
         **extra,
     }
@@ -58,7 +58,7 @@ def login_page(request: Request):
 
 @router.post("/login")
 def login_submit(request: Request, password: str = Form(...)):
-    if config.APP_PASSWORD and password == config.APP_PASSWORD:
+    if settings_store.verify_password(password):
         request.session["authed"] = True
         return RedirectResponse("/", status_code=303)
     lang = i18n.from_request(request)

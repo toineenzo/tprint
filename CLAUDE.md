@@ -35,6 +35,7 @@ app/
   codes.py                        QR / barcode -> PIL image (not escpos's native qr/barcode)
   richtext.py                      Styled lines -> PIL image (ESC/POS has no italic or grey)
   about.py                        Licence + library list shown in Settings > About
+  help.py                          Wiki pages for the in-app help (live, docs/wiki fallback)
   snippets.py                    Snippet CRUD (text/image/pdf/checklist/ics, multi-file)
   files.py                        Upload filename/extension handling shared by every upload path
   content.py                       Surprise-me CRUD + formatter, DB-backed, language-aware
@@ -115,6 +116,29 @@ snippet: that silently loses the bold centred title, the per-item due dates and
 the single/separate receipt mode. These two kinds are structured data with no
 coherent edit form, so `routers/snippets.py` makes them rename-only
 (`snippets_store.STRUCTURED_KINDS`).
+
+**A dead printer is a 503, not a 500.** `printer._send` raises
+`PrinterUnavailable` — with a message aimed at whoever is standing next to the
+printer — for every failure of `os.open`/`os.write` on the device. `main.py`
+maps it to a 503 carrying that message. Before this, switching the printer off
+produced "Request failed (500)" in the UI, which is the single most common
+failure there is and the least informative thing to say about it. Settings →
+Printer runs the same checks one at a time (`POST /api/settings/printer-test`)
+so the answer is "the device node isn't there" rather than "something broke".
+
+**The printer connection is a setting; the env vars are its fallback.**
+`settings.printer_backend()` / `printer_device()` return the stored value or
+`config.PRINTER_BACKEND` / `PRINTER_DEVICE`. Same rule for the login:
+`settings.auth_enabled()` and `settings.verify_password()` fall back to
+`AUTH_ENABLED` / `APP_PASSWORD`. Nothing reads those config values directly any
+more — an install configured only through docker-compose keeps behaving
+identically until someone changes it in the app.
+
+**The setup wizard is triggered by `settings.setup_done`, and nothing else.**
+Fresh databases get 0 from the schema; `_migrate_settings` sets it to 1 the
+moment it adds the column to an *existing* database, because an upgrade is not
+a first run. `reset_all()` drops the table, so a reset lands back in the
+wizard — which is the intended path, not a side effect.
 
 **Settings is a modal, and `/settings` is only kept alive for bookmarks.**
 There is exactly one React page behind auth (`index`), so changing a header
@@ -330,6 +354,24 @@ last one finished. An isolated print therefore never waits, while a burst —
 lock so the wait can't be raced, and it slices its sleep so a cancel still
 lands promptly.
 
+**The header/footer can be styled, and reuses the rich-text path to do it.**
+`header_style`/`footer_style` are JSON columns shaped like *one rich-text
+block*. `printer._frame_text` builds blocks from the text's lines and sends
+them through the same `_text_needs_bitmap` → `richtext.render` fallback the
+text tab uses, so italic and grey work without a second styling
+implementation. NULL means the plain centred frame that predates styling, and
+the UI saves NULL whenever the style equals the default — so an untouched
+install stays byte-identical on the crisp native path.
+
+**Cropping happens in the browser for images and on the server for PDFs.**
+`ui/CropModal.tsx` drags a box and keeps it as *fractions* of the source. An
+image (a composer upload, a header/footer logo) is cropped there and the
+smaller file is what gets uploaded. A PDF can't be cropped client-side, so the
+box travels with the request and `printer.crop_fractions` applies it to every
+rendered page — cropped *before* `_fit_to_width`, so the kept region fills the
+paper. A malformed box prints the whole page rather than failing the job: a
+crop is a refinement, not a precondition.
+
 **Printer "settings" are app-level formatting only, not real memory
 switches.** `settings.py` / the settings modal control a header/footer "frame"
 and default text style, applied in `printer.py`'s `_print_job`. This is
@@ -354,6 +396,15 @@ fired everything. The two are now separate cards (`components/queue/`), only
 the manual one carries the Run button, and `list_jobs()` sends a computed
 `scheduled` flag so the UI and that `WHERE` clause can't drift apart. **Don't
 let the frontend re-derive that split** — it's one predicate, server-side.
+
+**A repeating job's end rules are checked after the run, not before.**
+`ends_after` (a run count) and `ends_at` (a date the schedule may not pass) are
+independent; whichever hits first retires the job to `done` instead of
+rescheduling it. `run_count` is incremented before `_next_occurrence`, so
+"ends after 3" prints exactly three times. Both are NULL for every job written
+before they existed, which means "repeat forever" — the old behaviour.
+`recurrence_time` accepts `HH:MM:SS` as well as `HH:MM`; the seconds field is
+optional in the regex precisely so those older jobs keep validating.
 
 **Recurrence is a rule, not an interval.** `recurrence` (`daily`/`weekly`/
 `monthly`) pairs with `recurrence_days`: a JSON list of ISO weekdays 1-7 for
@@ -451,6 +502,21 @@ confirmation. It drops tables rather than `DELETE`ing rows so `AUTOINCREMENT`
 counters restart and the result is indistinguishable from a fresh volume. If
 you add a directory the app writes user content into, add it to `_CONTENT_DIRS`
 or its files will outlive a reset.
+
+**History stores a payload only when the print can be rebuilt from data.**
+`print_history.payload` is set for text, rich text, checklists and codes, and
+is NULL for anything sourced from a file — an image or PDF print keeps a
+thumbnail, not the file, so there would be nothing to reprint from.
+`can_snippet` in the public projection is that column's presence, which is all
+the UI needs to know whether to offer "save as snippet".
+
+**In-app help fetches the wiki, and falls back to the copy in the image.**
+`app/help.py` reads `raw.githubusercontent.com/wiki/...` with a short timeout
+and falls back to `docs/wiki/*.md` — the same Markdown that gets pushed to the
+wiki. It's proxied through the server because GitHub refuses to be framed and
+a cross-origin fetch would be blocked. The modal renders that Markdown with a
+~120-line renderer rather than a library: the input is our own documentation,
+not arbitrary input, and no raw HTML is interpreted.
 
 ## i18n
 

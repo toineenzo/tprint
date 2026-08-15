@@ -93,6 +93,19 @@ def seed_defaults() -> None:
                 conn.execute("INSERT INTO content_seeds (key) VALUES (?)", (key,))
 
 
+def restore_defaults() -> None:
+    """Throw away every content item and re-import the bundled seed files.
+
+    Destructive by design — this is the "put it back how the repo ships it"
+    button. Clearing content_seeds is what makes seed_defaults() import again
+    instead of skipping every (kind, language, version) it already did.
+    """
+    with db.get_conn() as conn:
+        conn.execute("DELETE FROM content_items")
+        conn.execute("DELETE FROM content_seeds")
+    seed_defaults()
+
+
 def _row_to_item(row) -> dict:
     return {
         "id": row["id"],

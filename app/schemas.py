@@ -25,7 +25,9 @@ SurpriseKind = Literal["joke", "recipe", "fortune"]
 RecipeCategory = Literal["breakfast", "lunch", "dinner", "dessert", "snack", "drink"]
 Align = Literal["left", "center", "right"]
 
-_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+# Seconds are optional: the UI now offers them, but every job written before
+# it did stores "HH:MM" and must keep validating.
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$")
 
 
 class QueueOptions(BaseModel):
@@ -34,8 +36,12 @@ class QueueOptions(BaseModel):
     recurrence: Optional[Recurrence] = None
     recurrence_time: Optional[str] = None
     recurrence_days: Optional[list[int]] = None
+    # When a repeating job stops. Both are optional and independent: whichever
+    # comes first ends it, and neither means "repeat forever" as before.
+    ends_after: Optional[int] = None
+    ends_at: Optional[str] = None
 
-    @field_validator("run_at", "recurrence", "recurrence_time", mode="before")
+    @field_validator("run_at", "recurrence", "recurrence_time", "ends_at", mode="before")
     @classmethod
     def _blank_to_none(cls, value):
         # HTML form fields submit "" for an untouched input; treat that as unset
@@ -83,11 +89,36 @@ class QueueOptions(BaseModel):
         if value is None:
             return None
         if not _TIME_RE.match(value):
-            raise ValueError("must be HH:MM in 24-hour form, e.g. 08:00")
+            raise ValueError("must be HH:MM or HH:MM:SS in 24-hour form, e.g. 08:00")
+        return value
+
+    @field_validator("ends_at")
+    @classmethod
+    def _normalize_ends_at(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return datetime.fromisoformat(value).isoformat(timespec="seconds")
+        except ValueError as exc:
+            raise ValueError("must be an ISO-8601 datetime, e.g. 2026-12-31T23:59") from exc
+
+    @field_validator("ends_after", mode="before")
+    @classmethod
+    def _blank_count_to_none(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
         return value
 
     @model_validator(mode="after")
     def _check_recurrence(self):
+        # Same reasoning as the weekday range check: a run limit of 0 would
+        # mean a job that ends before it has ever printed, which is never what
+        # anyone means and would be silent.
+        if self.ends_after is not None and self.ends_after < 1:
+            raise ValueError("ends_after must be at least 1")
+        if (self.ends_after or self.ends_at) and not self.recurrence:
+            raise ValueError("ends_after/ends_at only apply to a repeating job")
+
         # Without this a recurring job reaches print_queue._next_occurrence with
         # recurrence_time=None, which used to crash the worker with a 500.
         if self.recurrence and not self.recurrence_time:
@@ -208,6 +239,8 @@ def _build_queue_options(
     recurrence: Optional[str],
     recurrence_time: Optional[str],
     recurrence_days: Optional[str],
+    ends_after: Optional[str] = None,
+    ends_at: Optional[str] = None,
 ) -> QueueOptions:
     """Validate non-JSON queue options, reporting failures the same way FastAPI
     reports a bad JSON body — so all three transports return an identical 422."""
@@ -218,6 +251,8 @@ def _build_queue_options(
             recurrence=recurrence,
             recurrence_time=recurrence_time,
             recurrence_days=recurrence_days,
+            ends_after=ends_after,
+            ends_at=ends_at,
         )
     except ValidationError as exc:
         raise RequestValidationError(exc.errors()) from exc
@@ -229,9 +264,13 @@ def queue_options_form(
     recurrence: Optional[str] = Form(None),
     recurrence_time: Optional[str] = Form(None),
     recurrence_days: Optional[str] = Form(None),
+    ends_after: Optional[str] = Form(None),
+    ends_at: Optional[str] = Form(None),
 ) -> QueueOptions:
     """Dependency for the multipart print endpoints."""
-    return _build_queue_options(queue, run_at, recurrence, recurrence_time, recurrence_days)
+    return _build_queue_options(
+        queue, run_at, recurrence, recurrence_time, recurrence_days, ends_after, ends_at
+    )
 
 
 def queue_options_query(
@@ -240,6 +279,10 @@ def queue_options_query(
     recurrence: Optional[str] = None,
     recurrence_time: Optional[str] = None,
     recurrence_days: Optional[str] = None,
+    ends_after: Optional[str] = None,
+    ends_at: Optional[str] = None,
 ) -> QueueOptions:
     """Dependency for POST /snippets/{id}/print, which takes query params."""
-    return _build_queue_options(queue, run_at, recurrence, recurrence_time, recurrence_days)
+    return _build_queue_options(
+        queue, run_at, recurrence, recurrence_time, recurrence_days, ends_after, ends_at
+    )

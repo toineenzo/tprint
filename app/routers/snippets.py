@@ -206,6 +206,8 @@ def print_snippet(
             recurrence=options.recurrence,
             recurrence_time=options.recurrence_time,
             recurrence_days=options.recurrence_days,
+            ends_after=options.ends_after,
+            ends_at=options.ends_at,
         )
         return {"status": "queued", "job_id": job_id}
 

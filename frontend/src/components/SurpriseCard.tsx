@@ -3,6 +3,7 @@ import {
   IconArrowsShuffle,
   IconChefHat,
   IconMoodSmile,
+  IconPencil,
   IconPrinter,
   IconRefresh,
   IconSparkles,
@@ -17,6 +18,7 @@ import type { PrintResponse, RecipeCategory } from "../api/types";
 import { usePrint } from "../hooks/usePrint";
 import type { StringKey } from "../i18n/strings";
 import { notifyError } from "../notify";
+import { openSettings } from "../settingsOpener";
 import { ICON_SIZE, ICON_STROKE } from "../theme";
 import { PrimaryButton, SecondaryButton, SurpriseButton } from "./ui/Buttons";
 import { SectionCard } from "./ui/SectionCard";
@@ -88,6 +90,15 @@ export function SurpriseCard() {
     <SectionCard
       title={t("surprise_me")}
       icon={<IconSparkles size={ICON_SIZE.lg} stroke={ICON_STROKE} />}
+      action={
+        <SecondaryButton
+          size="xs"
+          onClick={() => openSettings("content")}
+          icon={<IconPencil size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+        >
+          {t("manage_content")}
+        </SecondaryButton>
+      }
     >
       <Group gap="xs" wrap="wrap">
         {SURPRISES.map(({ kind, labelKey, icon: Icon }) => (

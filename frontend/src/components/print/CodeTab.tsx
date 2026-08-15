@@ -1,10 +1,11 @@
-import { SegmentedControl, Select, Stack, Textarea } from "@mantine/core";
-import { useState } from "react";
+import { Image, SegmentedControl, Select, Stack, Text, Textarea } from "@mantine/core";
+import { useEffect, useState } from "react";
 
 import { useStrings } from "../../AppContext";
 import { api } from "../../api/client";
 import type { CodeFormat, PrintResponse } from "../../api/types";
 import { deriveName, useSaveAsSnippet } from "../../hooks/useSaveAsSnippet";
+import { ROLE } from "../../theme";
 import { PrintActions } from "./PrintActions";
 import { usePrintGate } from "./PrintGate";
 import { QueueOptionsFields, useQueueOptions } from "./QueueOptionsFields";
@@ -15,6 +16,95 @@ import { QueueOptionsFields, useQueueOptions } from "./QueueOptionsFields";
  * rejected by the server with a specific message if the data doesn't fit.
  */
 const SYMBOLOGIES = ["code128", "code39", "ean13", "ean8", "upca", "isbn13", "issn", "itf"];
+
+/**
+ * The code as the printer would render it, drawn while you type.
+ *
+ * Rendered by the server through `/print/code-image` — the same call the
+ * composer makes — rather than by a client-side QR library, so what's on
+ * screen is the exact bitmap that gets sent to the printer, and a barcode the
+ * symbology can't encode surfaces its error here instead of at print time.
+ */
+function CodePreview({
+  data,
+  format,
+  symbology,
+}: {
+  data: string;
+  format: CodeFormat;
+  symbology: string;
+}) {
+  const t = useStrings();
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data.trim()) {
+      setUrl(null);
+      setError(null);
+      return;
+    }
+    let stale = false;
+    let objectUrl: string | null = null;
+    // Debounced: every keystroke would otherwise re-render a code server-side.
+    const timer = setTimeout(async () => {
+      const form = new FormData();
+      form.set("data", data);
+      form.set("format", format);
+      form.set("symbology", symbology);
+      try {
+        const response = await fetch("/print/code-image", { method: "POST", body: form });
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null);
+          if (!stale) {
+            setUrl(null);
+            setError(detail?.detail ?? t("status_error"));
+          }
+          return;
+        }
+        objectUrl = URL.createObjectURL(await response.blob());
+        if (stale) return;
+        setUrl(objectUrl);
+        setError(null);
+      } catch {
+        if (!stale) setError(t("status_error"));
+      }
+    }, 300);
+
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [data, format, symbology, t]);
+
+  if (error) {
+    return (
+      <Text size="sm" c={ROLE.danger}>
+        {error}
+      </Text>
+    );
+  }
+  if (!url) return null;
+
+  return (
+    <Stack gap={4}>
+      <Text size="xs" c="dimmed">
+        {t("code_preview")}
+      </Text>
+      <Image
+        src={url}
+        alt={t("code_preview")}
+        fit="contain"
+        maw={260}
+        style={{
+          background: "#fff",
+          border: "1px solid var(--mantine-color-default-border)",
+        }}
+      />
+    </Stack>
+  );
+}
 
 export function CodeTab() {
   const t = useStrings();
@@ -89,6 +179,8 @@ export function CodeTab() {
           data={SYMBOLOGIES}
         />
       )}
+
+      <CodePreview data={data} format={format} symbology={symbology} />
 
       <QueueOptionsFields value={options.state} onChange={options.setState} />
 

@@ -1,6 +1,6 @@
-import { FileInput, Stack, Text } from "@mantine/core";
-import { IconFileTypePdf, IconPhoto } from "@tabler/icons-react";
-import { useCallback, useState } from "react";
+import { FileInput, Group, Stack, Text } from "@mantine/core";
+import { IconCrop, IconFileTypePdf, IconPhoto } from "@tabler/icons-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useStrings } from "../../AppContext";
 import { useAppData } from "../../AppData";
@@ -10,6 +10,8 @@ import { deriveFileName, useSaveAsSnippet } from "../../hooks/useSaveAsSnippet";
 import type { StringKey } from "../../i18n/strings";
 import { notifyError } from "../../notify";
 import { ICON_SIZE, ICON_STROKE } from "../../theme";
+import { SecondaryButton } from "../ui/Buttons";
+import { CropModal, type CropBox } from "../ui/CropModal";
 import { PrintActions } from "./PrintActions";
 import { usePrintGate } from "./PrintGate";
 import { QueueOptionsFields, useQueueOptions } from "./QueueOptionsFields";
@@ -84,6 +86,19 @@ export function FileTab({ config }: { config: FileTabConfig }) {
   const [, bump] = useState(0);
 
   const kindLabelKey = config.kind === "image" ? "kind_image" : "kind_pdf";
+
+  // PDF tab only: a preview of the chosen document, and an optional crop box
+  // that the server applies to every page (a PDF can't be cropped in-browser).
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; page: number; pages: number } | null>(
+    null,
+  );
+  const [pdfPage, setPdfPage] = useState(1);
+  const [pdfCrop, setPdfCrop] = useState<CropBox | null>(null);
+  const [cropping, setCropping] = useState(false);
+  // Images picked for the composer wait here until they have been offered a
+  // crop, one at a time.
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [pendingRest, setPendingRest] = useState<File[]>([]);
 
   /** Rasterize one page of a PDF server-side, reusing the existing renderer. */
   const rasterizePdf = useCallback(
@@ -216,11 +231,47 @@ export function FileTab({ config }: { config: FileTabConfig }) {
     [images, resolve, state.items, t],
   );
 
+  /**
+   * Show the chosen PDF as it will print, a page at a time.
+   *
+   * Rendered by `/print/pdf-page` — the same rasterizer the print itself uses
+   * — so the preview can't disagree with the paper, and a PDF the renderer
+   * can't open says so here rather than at print time.
+   */
+  useEffect(() => {
+    if (editing || !file) {
+      setPdfPreview(null);
+      setPdfCrop(null);
+      return;
+    }
+    let stale = false;
+    let objectUrl: string | null = null;
+    void (async () => {
+      try {
+        const { blob, pageCount } = await rasterizePdf(file, pdfPage);
+        if (stale) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPdfPreview({ url: objectUrl, page: pdfPage, pages: pageCount });
+      } catch (error) {
+        if (!stale) {
+          setPdfPreview(null);
+          notifyError(error instanceof Error ? error.message : t("status_error"));
+        }
+      }
+    })();
+    return () => {
+      stale = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [editing, file, pdfPage, rasterizePdf, t]);
+
   const reset = () => {
     state.items.forEach((item) => dropCache(item.id));
     images.clear();
     setState(EMPTY_STATE);
     setFile(null);
+    setPdfPage(1);
+    setPdfCrop(null);
     setSaveAsSnippet(false);
     options.reset();
   };
@@ -243,6 +294,8 @@ export function FileTab({ config }: { config: FileTabConfig }) {
         : file;
       if (!outgoing) return;
       form.set("file", outgoing);
+      // A PDF is cropped by the server, per page — see printer.crop_fractions.
+      if (!editing && pdfCrop) form.set("crop", JSON.stringify(pdfCrop));
     }
     if (queue) appendQueueOptions(form, options.toPayload());
 
@@ -256,7 +309,11 @@ export function FileTab({ config }: { config: FileTabConfig }) {
       // previews the canvas rendering — the same content, laid out for paper.
       flow
         ? { kind: "image", file: await exportPng(state, images, pageWidth) }
-        : { kind: config.kind, file: outgoing },
+        : {
+            kind: config.kind,
+            file: outgoing,
+            crop: !editing && pdfCrop ? JSON.stringify(pdfCrop) : null,
+          },
       { queued: queue },
     );
     if (ok) reset();
@@ -318,7 +375,18 @@ export function FileTab({ config }: { config: FileTabConfig }) {
             onChange={setState}
             images={images}
             pageWidth={pageWidth}
-            onAddFiles={(files) => void addFiles(files)}
+            // Images get the crop step before they land on the canvas; a PDF
+            // can't be cropped in the browser and goes straight in, where the
+            // editor's own crop tool covers it.
+            onAddFiles={(files) => {
+              const pdfs = files.filter((f) => f.type === "application/pdf");
+              const pictures = files.filter((f) => f.type !== "application/pdf");
+              if (pdfs.length) void addFiles(pdfs);
+              if (pictures.length) {
+                setPendingImage(pictures[0]);
+                setPendingRest(pictures.slice(1));
+              }
+            }}
             onAddSource={(source, name) => void addSource(source, name)}
             onUpdateSource={(id, source) => void updateSource(id, source)}
             onChangePdfPage={(id, page) => void changePdfPage(id, page)}
@@ -326,14 +394,117 @@ export function FileTab({ config }: { config: FileTabConfig }) {
           />
         </>
       ) : (
-        <FileInput
-          value={file}
-          onChange={setFile}
-          accept={config.accept}
-          clearable
-          placeholder={t(kindLabelKey)}
-          aria-label={t(config.printLabelKey)}
-          leftSection={<Icon size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+        <>
+          <FileInput
+            value={file}
+            onChange={(next) => {
+              setFile(next);
+              setPdfPage(1);
+              setPdfCrop(null);
+            }}
+            accept={config.accept}
+            clearable
+            placeholder={t(kindLabelKey)}
+            aria-label={t(config.printLabelKey)}
+            leftSection={<Icon size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+          />
+
+          {pdfPreview && (
+            <Stack gap="xs">
+              <Group gap="xs" wrap="wrap">
+                <Text size="xs" c="dimmed">
+                  {t("pdf_preview_page")
+                    .replace("{page}", String(pdfPreview.page))
+                    .replace("{pages}", String(pdfPreview.pages))}
+                </Text>
+                {pdfPreview.pages > 1 && (
+                  <>
+                    <SecondaryButton
+                      size="xs"
+                      disabled={pdfPage <= 1}
+                      onClick={() => setPdfPage((page) => Math.max(1, page - 1))}
+                    >
+                      {"<"}
+                    </SecondaryButton>
+                    <SecondaryButton
+                      size="xs"
+                      disabled={pdfPage >= pdfPreview.pages}
+                      onClick={() =>
+                        setPdfPage((page) => Math.min(pdfPreview.pages, page + 1))
+                      }
+                    >
+                      {">"}
+                    </SecondaryButton>
+                  </>
+                )}
+                <SecondaryButton
+                  size="xs"
+                  onClick={() => setCropping(true)}
+                  icon={<IconCrop size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+                >
+                  {pdfCrop ? t("crop_change") : t("crop_title")}
+                </SecondaryButton>
+                {pdfCrop && (
+                  <SecondaryButton size="xs" onClick={() => setPdfCrop(null)}>
+                    {t("crop_clear")}
+                  </SecondaryButton>
+                )}
+              </Group>
+              <div style={{ position: "relative", maxWidth: 320 }}>
+                <img
+                  src={pdfPreview.url}
+                  alt={t("preview")}
+                  style={{
+                    width: "100%",
+                    display: "block",
+                    background: "#fff",
+                    border: "1px solid var(--mantine-color-default-border)",
+                  }}
+                />
+                {pdfCrop && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${pdfCrop.x * 100}%`,
+                      top: `${pdfCrop.y * 100}%`,
+                      width: `${pdfCrop.w * 100}%`,
+                      height: `${pdfCrop.h * 100}%`,
+                      border: "2px dashed var(--mantine-primary-color-filled)",
+                    }}
+                  />
+                )}
+              </div>
+            </Stack>
+          )}
+
+          {cropping && pdfPreview && (
+            <CropModal
+              previewUrl={pdfPreview.url}
+              onCancel={() => setCropping(false)}
+              onDone={({ box }) => {
+                setCropping(false);
+                setPdfCrop(box);
+              }}
+            />
+          )}
+        </>
+      )}
+
+      {/* Composer uploads are offered a crop one image at a time. */}
+      {pendingImage && (
+        <CropModal
+          file={pendingImage}
+          onCancel={() => {
+            setPendingImage(null);
+            setPendingRest([]);
+          }}
+          onDone={({ cropped }) => {
+            const next = cropped ?? pendingImage;
+            const [head, ...rest] = pendingRest;
+            setPendingImage(head ?? null);
+            setPendingRest(rest);
+            void addFiles([next]);
+          }}
         />
       )}
 
