@@ -572,8 +572,23 @@ def overview_content(events: list[dict], scope: str):
 
 
 def day_content(day, events: list[dict], horizontal: bool, width: int | None = None):
-    """One day's events as a single receipt, upright or turned sideways."""
-    title = agenda.day_title(day)
+    """One day's events as a single receipt. Kept for the callers that say day."""
+    return period_content(day, events, horizontal, "day", width)
+
+
+def period_content(
+    start,
+    events: list[dict],
+    horizontal: bool,
+    period: str = "day",
+    width: int | None = None,
+):
+    """One day, week or month of events as a single receipt.
+
+    Identical layout at every scale — only the heading and how many events land
+    on the slip differ — so a week receipt can't drift from a day one.
+    """
+    title = agenda.period_title(start, period)
 
     if not horizontal:
         def content(p):
@@ -609,9 +624,9 @@ def ics_jobs(
     """Every receipt an imported calendar prints as.
 
     `mode` is one of:
-      single    one agenda receipt with every event
-      separate  one receipt per event
-      day       one consolidated receipt per day
+      single            one agenda receipt with every event
+      separate          one receipt per event
+      day/week/month    one consolidated receipt per day, week or month
 
     With an overview grid enabled it leads the agenda in `single` mode, and is
     its own receipt ahead of the rest otherwise — there is no sensible way to
@@ -623,13 +638,13 @@ def ics_jobs(
     """
     scope = overview if overview in ("week", "month") else None
 
-    if mode == "day":
+    if mode in agenda.PERIODS:
         if scope:
             yield "agenda overview", overview_content(events, scope)
-        for day, group in agenda.group_by_day(events):
+        for start, group in agenda.group_by_period(events, mode):
             yield (
-                agenda.day_title(day)[:60],
-                day_content(day, group, orientation == "horizontal"),
+                agenda.period_title(start, mode)[:60],
+                period_content(start, group, orientation == "horizontal", mode),
             )
         return
 

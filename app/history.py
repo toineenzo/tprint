@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 
 from PIL import Image
 
@@ -110,6 +111,28 @@ def list_recent(limit: int = HISTORY_LIMIT) -> list[dict]:
         return [dict(row) for row in rows]
 
 
+def to_local(stamp: str | None) -> str | None:
+    """A stored UTC timestamp as naive local time, for display.
+
+    `created_at` is SQLite's own `datetime('now')`, which is UTC — retention
+    compares against it in UTC and must keep doing so. Everything the UI shows
+    is local, though: a receipt printed at 04:02 listed as 02:02 next to a
+    schedule that counts in local time reads as a bug, and did.
+
+    Converted on read rather than stored differently, so rows written before
+    this display correctly too.
+    """
+    if not stamp:
+        return stamp
+    try:
+        parsed = datetime.fromisoformat(stamp.replace(" ", "T"))
+    except ValueError:
+        return stamp
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone().replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+
+
 def list_recent_public(limit: int = HISTORY_LIMIT) -> list[dict]:
     """Recent entries as the API exposes them — the stored thumbnail filename
     is replaced by a has_image flag, since the image is served by id."""
@@ -122,7 +145,7 @@ def list_recent_public(limit: int = HISTORY_LIMIT) -> list[dict]:
             # Whether "save as snippet" can be offered for this entry, rather
             # than the payload itself: the UI only needs to know if it can.
             "can_snippet": bool(entry["payload"]),
-            "created_at": entry["created_at"],
+            "created_at": to_local(entry["created_at"]),
         }
         for entry in list_recent(limit)
     ]

@@ -1,17 +1,23 @@
 import asyncio
 import json
+import threading
 import logging
 import os
 import uuid
 from datetime import datetime, timedelta
 
-from app import actions, config, db, files, ics_import, printer
+from app import actions, config, db, files, history, ics_import, printer
 
 logger = logging.getLogger("tprint.queue")
 
 RECURRENCES = ("daily", "weekly", "monthly")
 DEFAULT_RECURRENCE_TIME = "08:00"
 POLL_SECONDS = 15
+
+# Set whenever a job is queued, so the worker stops waiting and re-plans. A
+# threading.Event rather than an asyncio one because `enqueue` is called from
+# request threads, and this is waited on inside `asyncio.to_thread`.
+_wake = threading.Event()
 
 
 def save_upload(data: bytes, filename: str) -> str:
@@ -97,7 +103,12 @@ def enqueue(
                 ends_at if recurrence else None,
             ),
         )
-        return cur.lastrowid
+        job_id = cur.lastrowid
+
+    # Without this the worker would sleep out its current wait before noticing
+    # a job due in two seconds' time.
+    _wake.set()
+    return job_id
 
 
 def prune_finished_jobs() -> None:
@@ -194,6 +205,11 @@ def list_jobs() -> list[dict]:
         job = dict(row)
         job["recurrence_days"] = parse_days(job["recurrence_days"]) or None
         job["scheduled"] = is_scheduled(job["run_at"], job["recurrence"])
+        # created_at/last_run_at come from SQLite in UTC while run_at is naive
+        # local; shown side by side, the pair has to agree. run_at is left
+        # alone — it is already local, and parsing it as UTC would shift it.
+        job["created_at"] = history.to_local(job["created_at"])
+        job["last_run_at"] = history.to_local(job["last_run_at"])
         jobs.append(job)
     return jobs
 
@@ -489,7 +505,12 @@ def _ics_events(payload: dict) -> list[dict]:
         if payload.get("url")
         else _read_upload(payload["file"])
     )
-    events = ics_import.within_days(ics_import.parse_ics(raw), payload.get("days_ahead"))
+    # `days_ahead` is the numeric field this replaced; jobs queued with it keep
+    # working, which is why both are read.
+    window = payload.get("window")
+    if window is None and payload.get("days_ahead") is not None:
+        window = str(payload["days_ahead"])
+    events = ics_import.within_window(ics_import.parse_ics(raw), window)
     return ics_import.select_events(events, payload.get("select"))
 
 
@@ -609,6 +630,31 @@ def _execute(kind: str, payload: dict) -> None:
         raise ValueError(f"unknown job kind: {kind}")
 
 
+def _seconds_until_next_due() -> float:
+    """How long the worker may sleep before something is due.
+
+    A fixed poll interval meant a job scheduled for 04:02:00 printed at
+    04:02:14 — up to a full tick late, which is very visible now that a
+    schedule can name seconds. Sleeping to the next `run_at` instead makes it
+    punctual, while POLL_SECONDS stays the upper bound so retention and any
+    job written by another process are still picked up.
+    """
+    now = datetime.now()
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT MIN(run_at) AS next FROM print_jobs "
+            "WHERE status = 'pending' AND run_at IS NOT NULL"
+        ).fetchone()
+    if not row or not row["next"]:
+        return POLL_SECONDS
+    try:
+        due = datetime.fromisoformat(row["next"])
+    except (TypeError, ValueError):
+        return POLL_SECONDS
+    # A second of slack: waking a hair early would just spin.
+    return max(0.5, min(POLL_SECONDS, (due - now).total_seconds()))
+
+
 async def worker_loop() -> None:
     while True:
         try:
@@ -618,6 +664,10 @@ async def worker_loop() -> None:
             # own: it's cheap, and it means finished jobs are tidied whether
             # or not anyone has the page open.
             await asyncio.to_thread(prune_finished_jobs)
+            delay = await asyncio.to_thread(_seconds_until_next_due)
         except Exception:
             logger.exception("queue worker tick failed")
-        await asyncio.sleep(POLL_SECONDS)
+            delay = POLL_SECONDS
+        # Returns early when something is queued mid-wait.
+        await asyncio.to_thread(_wake.wait, delay)
+        _wake.clear()

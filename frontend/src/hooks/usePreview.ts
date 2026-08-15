@@ -18,9 +18,7 @@ export function previewForm(request: PreviewRequest): FormData {
   if (request.crop) form.set("crop", request.crop);
   if (request.select) form.set("select", request.select);
   if (request.url) form.set("url", request.url);
-  if (request.days_ahead !== undefined) {
-    form.set("days_ahead", String(request.days_ahead));
-  }
+  if (request.window) form.set("window", request.window);
   if (request.file) form.set("file", request.file);
   return form;
 }

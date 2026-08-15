@@ -78,7 +78,7 @@ export type Align = "left" | "center" | "right";
 export type PrintMode = "single" | "separate";
 
 /** Agendas add a per-day mode the checklist has no meaning for. */
-export type IcsMode = "single" | "separate" | "day";
+export type IcsMode = "single" | "separate" | "day" | "week" | "month";
 export type AgendaOverview = "none" | "week" | "month";
 export type AgendaOrientation = "vertical" | "horizontal";
 
@@ -190,8 +190,8 @@ export type PreviewRequest = {
   select?: string;
   /** A calendar fetched by URL rather than uploaded. */
   url?: string;
-  /** Relative window in days from today; omitted means the whole calendar. */
-  days_ahead?: number;
+  /** Relative window ("next_week", "7", …); omitted means the whole calendar. */
+  window?: string;
 };
 
 export type Recurrence = "daily" | "weekly" | "monthly";

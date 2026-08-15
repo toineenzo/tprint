@@ -18,7 +18,7 @@ Recurrence = Literal["daily", "weekly", "monthly"]
 PrintMode = Literal["single", "separate"]
 # Agendas have a third mode the checklist has no meaning for, so this is its
 # own literal rather than a widening of PrintMode.
-IcsMode = Literal["single", "separate", "day"]
+IcsMode = Literal["single", "separate", "day", "week", "month"]
 AgendaOverview = Literal["none", "week", "month"]
 AgendaOrientation = Literal["vertical", "horizontal"]
 SurpriseKind = Literal["joke", "recipe", "fortune"]

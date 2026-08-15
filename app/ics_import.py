@@ -58,29 +58,68 @@ def fetch_ics(url: str) -> bytes:
     return data
 
 
-def within_days(events: list[dict], days_ahead: int | None) -> list[dict]:
-    """Events from today up to `days_ahead` days from now.
+WINDOWS = ("all", "today", "this_week", "this_weekend", "next_week", "next_weekend")
 
-    A *relative* window, evaluated when the job runs rather than when it was
-    created — which is the whole point for a recurring print: "every Monday,
-    the week ahead" has to mean the week that is ahead *then*. None means no
-    window at all, i.e. the whole calendar.
+
+def window_range(window: str | None, today: date | None = None) -> tuple[date, date] | None:
+    """The days a window covers, or None for "the whole calendar".
+
+    Named windows are resolved against *today*, not against when the job was
+    created — that is what makes "next weekend" mean the coming one on every
+    run of a repeating print. Weeks start on Monday, matching
+    `agenda.period_start` and the scheduler's weekday numbering.
+
+    A window can also be a plain number of days ("7"), which is the custom
+    case: today through today + N.
     """
-    if days_ahead is None:
+    if window is None or window in ("", "all"):
+        return None
+
+    today = today or date.today()
+    monday = today - timedelta(days=today.weekday())
+
+    if window == "today":
+        return today, today
+    if window == "this_week":
+        # The *rest* of this week: printing Wednesday's list shouldn't lead
+        # with Monday and Tuesday, which have already happened.
+        return today, monday + timedelta(days=6)
+    if window == "this_weekend":
+        return monday + timedelta(days=5), monday + timedelta(days=6)
+    if window == "next_week":
+        return monday + timedelta(days=7), monday + timedelta(days=13)
+    if window == "next_weekend":
+        return monday + timedelta(days=12), monday + timedelta(days=13)
+
+    try:
+        days = max(0, int(window))
+    except (TypeError, ValueError):
+        return None
+    return today, today + timedelta(days=days)
+
+
+def within_window(events: list[dict], window: str | None) -> list[dict]:
+    """Events falling inside a window, evaluated at the moment this runs."""
+    span = window_range(window)
+    if span is None:
         return events
 
     from app import agenda
 
-    today = date.today()
-    last = today + timedelta(days=max(0, days_ahead))
+    first, last = span
     kept = []
     for event in events:
         day = agenda.event_date(event)
         # An event with no usable date can't be placed in a window; it is
         # dropped rather than printed by accident on every run.
-        if day is not None and today <= day <= last:
+        if day is not None and first <= day <= last:
             kept.append(event)
     return kept
+
+
+def within_days(events: list[dict], days_ahead: int | None) -> list[dict]:
+    """The numeric form of `within_window`, kept for payloads that predate it."""
+    return within_window(events, None if days_ahead is None else str(days_ahead))
 
 
 def select_events(events: list[dict], select: list[int] | None) -> list[dict]:

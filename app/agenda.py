@@ -35,20 +35,46 @@ def event_date(event: dict) -> date | None:
         return None
 
 
-def group_by_day(events: list[dict]) -> list[tuple[date | None, list[dict]]]:
-    """Events bucketed by day, in chronological order.
+PERIODS = ("day", "week", "month")
+
+
+def period_start(day: date | None, period: str) -> date | None:
+    """The first day of the day/week/month `day` falls in.
+
+    Weeks start on Monday, matching ISO and the weekday rules used by the
+    scheduler, so "one receipt per week" lines up with how the rest of the app
+    talks about weeks.
+    """
+    if day is None:
+        return None
+    if period == "week":
+        return day - timedelta(days=day.weekday())
+    if period == "month":
+        return day.replace(day=1)
+    return day
+
+
+def group_by_period(
+    events: list[dict], period: str
+) -> list[tuple[date | None, list[dict]]]:
+    """Events bucketed by day, week or month, in chronological order.
 
     Undated events end up in a single trailing `None` bucket rather than being
     dropped — a calendar with a malformed entry should still print.
     """
     buckets: dict[date | None, list[dict]] = {}
     for event in events:
-        buckets.setdefault(event_date(event), []).append(event)
+        buckets.setdefault(period_start(event_date(event), period), []).append(event)
     dated = sorted((day for day in buckets if day is not None))
     ordered: list[tuple[date | None, list[dict]]] = [(day, buckets[day]) for day in dated]
     if None in buckets:
         ordered.append((None, buckets[None]))
     return ordered
+
+
+def group_by_day(events: list[dict]) -> list[tuple[date | None, list[dict]]]:
+    """Events bucketed by day. Kept as the name every earlier caller uses."""
+    return group_by_period(events, "day")
 
 
 def _cell(text: str, marked: bool) -> str:
@@ -96,7 +122,23 @@ def overview_lines(events: list[dict], scope: str) -> list[str]:
 
 
 def day_title(day: date | None) -> str:
-    return day.strftime("%A %d %B %Y") if day else "Undated"
+    return period_title(day, "day")
+
+
+def period_title(start: date | None, period: str) -> str:
+    """The heading above one grouped receipt.
+
+    Named after what the receipt covers rather than its first date: "Week of
+    16 August" reads as a week, "16 August 2026" reads as a day.
+    """
+    if start is None:
+        return "Undated"
+    if period == "week":
+        end = start + timedelta(days=6)
+        return f"Week {start:%d %b} - {end:%d %b %Y}"
+    if period == "month":
+        return start.strftime("%B %Y")
+    return start.strftime("%A %d %B %Y")
 
 
 # --- landscape day receipts -------------------------------------------------

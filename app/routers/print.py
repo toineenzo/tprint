@@ -234,7 +234,7 @@ def _ics_bytes(file: UploadFile | None, url: str | None, data: bytes | None = No
 async def list_ics_events(
     file: Optional[UploadFile] = File(None),
     url: Optional[str] = Form(None),
-    days_ahead: Optional[int] = Form(None),
+    window: Optional[str] = Form(None),
     _: None = Depends(auth.require_api_auth),
 ):
     """The events in an uploaded .ics, so the UI can offer a choice.
@@ -252,7 +252,7 @@ async def list_ics_events(
     except Exception as exc:
         raise HTTPException(400, f"could not parse .ics file: {exc}") from exc
 
-    events = ics_import.within_days(events, days_ahead)
+    events = ics_import.within_window(events, window)
     return {
         "events": [
             {
@@ -277,7 +277,7 @@ async def print_ics(
     overview: AgendaOverview = Form("none"),
     orientation: AgendaOrientation = Form("vertical"),
     select: Optional[str] = Form(None),
-    days_ahead: Optional[int] = Form(None),
+    window: Optional[str] = Form(None),
     options: QueueOptions = Depends(queue_options_form),
     _: None = Depends(auth.require_api_auth),
 ):
@@ -298,7 +298,7 @@ async def print_ics(
     if not events:
         raise HTTPException(400, "no events found in .ics file")
 
-    windowed = ics_import.within_days(events, days_ahead)
+    windowed = ics_import.within_window(events, window)
     chosen = ics_import.select_events(windowed, _parse_select(select))
     if not chosen:
         raise HTTPException(400, "no events selected")
@@ -309,8 +309,8 @@ async def print_ics(
             "overview": overview,
             "orientation": orientation,
             # A relative window, re-evaluated on every run — see
-            # ics_import.within_days.
-            "days_ahead": days_ahead,
+            # ics_import.window_range.
+            "window": window,
             # Indices, not the events themselves: the job re-reads the calendar
             # at print time, so it must select the same way.
             "select": _parse_select(select),
@@ -429,6 +429,9 @@ async def preview_job(
     orientation: str = Form("vertical"),
     snippet_id: Optional[int] = Form(None),
     crop: Optional[str] = Form(None),
+    select: Optional[str] = Form(None),
+    window: Optional[str] = Form(None),
+    url: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     request: Request = None,
     _: None = Depends(auth.require_api_auth),
@@ -490,14 +493,16 @@ async def preview_job(
         except Exception as exc:
             raise HTTPException(400, f"could not parse .ics file: {exc}") from exc
         events = ics_import.select_events(
-            ics_import.within_days(events, days_ahead), _parse_select(select)
+            ics_import.within_window(events, window), _parse_select(select)
         )
         # Previews the first receipt of whichever mode was chosen, framed the
         # same way the real print frames it.
-        if mode == "day":
-            groups = agenda.group_by_day(events)
-            day, group = groups[0] if groups else (None, events)
-            content_fn = printer.day_content(day, group, orientation == "horizontal")
+        if mode in agenda.PERIODS:
+            groups = agenda.group_by_period(events, mode)
+            start, group = groups[0] if groups else (None, events)
+            content_fn = printer.period_content(
+                start, group, orientation == "horizontal", mode
+            )
         elif mode == "separate":
             content_fn = printer.ics_content(events[:1])
         elif overview in ("week", "month"):

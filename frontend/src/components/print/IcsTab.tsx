@@ -1,6 +1,7 @@
 import {
   Checkbox,
   FileInput,
+  NumberInput,
   TextInput,
   Group,
   ScrollArea,
@@ -51,7 +52,10 @@ export function IcsTab() {
   const [url, setUrl] = useState("");
   // Relative window, evaluated server-side at print time — an absolute range
   // would be frozen to the day the job was created.
-  const [daysAhead, setDaysAhead] = useState<string>("none");
+  const [window_, setWindow] = useState<string>("all");
+  const [customDays, setCustomDays] = useState<number>(7);
+  // "custom" is a UI choice; what travels is the number of days.
+  const windowValue = window_ === "custom" ? String(customDays) : window_;
   const [mode, setMode] = useState<IcsMode>("single");
   const [overview, setOverview] = useState<AgendaOverview>("none");
   const [orientation, setOrientation] = useState<AgendaOrientation>("vertical");
@@ -81,7 +85,7 @@ export function IcsTab() {
       const form = new FormData();
       if (usingUrl) form.set("url", url.trim());
       else if (file) form.set("file", file);
-      if (daysAhead !== "none") form.set("days_ahead", daysAhead);
+      if (windowValue !== "all") form.set("window", windowValue);
       try {
         const result = await api.postForm<{ events: IcsEvent[] }>(
           "/print/ics-events",
@@ -99,7 +103,7 @@ export function IcsTab() {
     return () => {
       stale = true;
     };
-  }, [file, source, url, daysAhead, t]);
+  }, [file, source, url, windowValue, t]);
 
   const [from, to] = range;
   const inRange = (event: IcsEvent) => {
@@ -129,7 +133,7 @@ export function IcsTab() {
     const form = new FormData();
     if (usingUrl) form.set("url", url.trim());
     else if (file) form.set("file", file);
-    if (daysAhead !== "none") form.set("days_ahead", daysAhead);
+    if (windowValue !== "all") form.set("window", windowValue);
     form.set("mode", mode);
     form.set("overview", overview);
     form.set("orientation", orientation);
@@ -159,7 +163,7 @@ export function IcsTab() {
         kind: "ics",
         file: usingUrl ? null : file,
         url: usingUrl ? url.trim() : undefined,
-        days_ahead: daysAhead === "none" ? undefined : Number(daysAhead),
+        window: windowValue === "all" ? undefined : windowValue,
         mode,
         overview,
         orientation,
@@ -222,17 +226,29 @@ export function IcsTab() {
       <Select
         label={t("ics_window_label")}
         description={t("ics_window_hint")}
-        value={daysAhead}
+        value={window_}
         allowDeselect={false}
-        onChange={(value) => setDaysAhead(value ?? "none")}
+        onChange={(value) => setWindow(value ?? "all")}
         data={[
-          { value: "none", label: t("ics_window_all") },
-          { value: "0", label: t("ics_window_today") },
-          { value: "7", label: t("ics_window_week") },
-          { value: "14", label: t("ics_window_fortnight") },
-          { value: "30", label: t("ics_window_month") },
+          { value: "all", label: t("ics_window_all") },
+          { value: "today", label: t("ics_window_today") },
+          { value: "this_week", label: t("ics_window_this_week") },
+          { value: "this_weekend", label: t("ics_window_this_weekend") },
+          { value: "next_week", label: t("ics_window_next_week") },
+          { value: "next_weekend", label: t("ics_window_next_weekend") },
+          { value: "custom", label: t("ics_window_custom") },
         ]}
       />
+
+      {window_ === "custom" && (
+        <NumberInput
+          label={t("ics_window_custom_label")}
+          min={0}
+          max={365}
+          value={customDays}
+          onChange={(value) => setCustomDays(Math.max(0, Number(value) || 0))}
+        />
+      )}
 
       {events.length > 0 && (
         <Stack gap="xs">
@@ -306,6 +322,8 @@ export function IcsTab() {
         data={[
           { value: "single", label: t("ics_mode_single") },
           { value: "day", label: t("ics_mode_day") },
+          { value: "week", label: t("ics_mode_week") },
+          { value: "month", label: t("ics_mode_month") },
           { value: "separate", label: t("ics_mode_separate") },
         ]}
       />
@@ -334,7 +352,8 @@ export function IcsTab() {
 
       {/* Orientation only means anything for a per-day slip: an agenda that
           runs to several receipts has nothing to turn sideways. */}
-      {mode === "day" && (
+      {/* Orientation is a per-slip choice; it applies to every grouped mode. */}
+      {(mode === "day" || mode === "week" || mode === "month") && (
         <Stack gap={4}>
           <Text size="sm">{t("agenda_orientation")}</Text>
           <SegmentedControl
