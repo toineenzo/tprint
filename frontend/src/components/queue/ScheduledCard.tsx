@@ -99,6 +99,14 @@ export function ScheduledCard() {
                 {index > 0 && <Divider mb="xs" />}
                 <JobRow
                   job={job}
+                  // Prints it now *as well*; the schedule is untouched.
+                  onRun={async () => {
+                    await submit(
+                      () => api.post(`/queue/${job.id}/run`),
+                      "status_printed",
+                    );
+                    await refreshAll();
+                  }}
                   detail={
                     <Group gap="xs" wrap="wrap">
                       <Text size="xs" c="dimmed">

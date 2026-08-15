@@ -227,22 +227,36 @@ def run_manual_queue() -> int:
 
 
 def run_job_now(job_id: int) -> bool:
-    """Run one queued job immediately, ahead of the rest of the queue.
+    """Print one pending job immediately, ahead of whatever else is waiting.
 
-    Only a *pending* job, and only one in the manual queue: a scheduled job
-    fires on its own trigger, and "print this one now" must not quietly pull a
-    future print forward — the same invariant `run_manual_queue` keeps for the
-    bulk button. Returns False when there was nothing runnable under that id.
+    A manual-queue job goes through `_run_job`: it exists to be printed once,
+    so printing it finishes it.
+
+    A **scheduled** job is printed *without touching its schedule* — same
+    receipt, but `run_at`, `status`, `run_count` and any end rule are left
+    exactly as they were. Pressing "print this one now" on tomorrow's agenda
+    means "I want it now as well", not "cancel tomorrow's"; consuming the
+    occurrence, or a run of an `ends_after` limit, would silently spend
+    something the button never offered to spend.
+
+    Returns False when there is no pending job under that id.
     """
     with db.get_conn() as conn:
         row = conn.execute(
-            "SELECT id FROM print_jobs WHERE id = ? AND status = 'pending' "
-            "AND run_at IS NULL AND recurrence IS NULL",
-            (job_id,),
+            "SELECT * FROM print_jobs WHERE id = ? AND status = 'pending'", (job_id,)
         ).fetchone()
     if not row:
         return False
-    _run_job(job_id)
+
+    job = dict(row)
+    if not is_scheduled(job["run_at"], job["recurrence"]):
+        _run_job(job_id)
+        return True
+
+    # Deliberately not via _run_job: that one owns the status/reschedule
+    # bookkeeping, which is precisely what an ad-hoc print must not do. Files
+    # are left in place for the same reason — the job still has runs ahead.
+    _execute(job["kind"], json.loads(job["payload"]))
     return True
 
 

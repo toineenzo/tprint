@@ -18,9 +18,12 @@ def run_queue(_: None = Depends(auth.require_api_auth)):
 
 @router.post("/{job_id}/run")
 def run_single_job(job_id: int, _: None = Depends(auth.require_api_auth)):
-    """Print one queued job now, leaving the rest of the queue where it is."""
+    """Print one job now, leaving the rest of the queue where it is.
+
+    A scheduled job keeps its schedule — see print_queue.run_job_now.
+    """
     if not print_queue.run_job_now(job_id):
-        raise HTTPException(404, "job not found, not pending, or not a manual queue job")
+        raise HTTPException(404, "job not found or not pending")
     return {"status": "printed"}
 
 
