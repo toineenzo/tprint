@@ -30,6 +30,15 @@ const DEFAULT_TIME = "08:00";
 export type ScheduleMode = "queue" | "once" | "repeat";
 
 export type QueueOptionsState = {
+  /**
+   * Whether the schedule has been chosen deliberately.
+   *
+   * `mode` alone can't answer that: it starts at "queue", which is also a
+   * real choice. Picking any of the three sets this, and that is what hides
+   * the immediate Print button — once a print is meant for later, offering
+   * "print now" beside it invites printing it twice.
+   */
+  chosen: boolean;
   mode: ScheduleMode;
   runAt: Date | null;
   recurrence: Recurrence;
@@ -43,6 +52,7 @@ export type QueueOptionsState = {
 };
 
 const EMPTY: QueueOptionsState = {
+  chosen: false,
   mode: "queue",
   runAt: null,
   recurrence: "daily",
@@ -106,6 +116,8 @@ export function useQueueOptions() {
     toPayload,
     reset,
     complete: isScheduleComplete(state),
+    /** True once a schedule was picked: the tab then offers Queue only. */
+    chosen: state.chosen,
   };
 }
 
@@ -177,7 +189,7 @@ export function QueueOptionsFields({ value, onChange }: Props) {
             <SegmentedControl
               fullWidth
               value={value.mode}
-              onChange={(mode) => patch({ mode: mode as ScheduleMode })}
+              onChange={(mode) => patch({ mode: mode as ScheduleMode, chosen: true })}
               data={[
                 { value: "queue", label: t("schedule_mode_queue") },
                 { value: "once", label: t("schedule_mode_once") },

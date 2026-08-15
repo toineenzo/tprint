@@ -1,5 +1,5 @@
 import { Badge, Group, Stack, Text } from "@mantine/core";
-import { IconPlayerPlay, IconRepeat, IconX } from "@tabler/icons-react";
+import { IconEye, IconPlayerPlay, IconRepeat, IconX } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 
 import { useStrings } from "../../AppContext";
@@ -70,6 +70,7 @@ export function JobRow({
   job,
   detail,
   onRun,
+  onView,
   onCancel,
 }: {
   job: QueueJob;
@@ -77,6 +78,8 @@ export function JobRow({
   /** Only the manual queue passes this: a scheduled job runs on its own
    *  trigger, and printing it early would pull a future print forward. */
   onRun?: () => void;
+  /** Show what this job would print. Available whatever its status. */
+  onView?: () => void;
   onCancel: () => void;
 }) {
   const t = useStrings();
@@ -102,18 +105,25 @@ export function JobRow({
         )}
       </Stack>
 
-      {job.status === "pending" && (
-        <Group gap={4} wrap="nowrap">
-          {onRun && (
-            <IconActionButton label={t("queue_run_job")} onClick={onRun}>
-              <IconPlayerPlay size={ICON_SIZE.md} stroke={ICON_STROKE} />
-            </IconActionButton>
-          )}
-          <IconActionButton label={t("cancel")} tone="danger" onClick={onCancel}>
-            <IconX size={ICON_SIZE.md} stroke={ICON_STROKE} />
+      <Group gap={4} wrap="nowrap">
+        {onView && (
+          <IconActionButton label={t("preview")} onClick={onView}>
+            <IconEye size={ICON_SIZE.md} stroke={ICON_STROKE} />
           </IconActionButton>
-        </Group>
-      )}
+        )}
+        {job.status === "pending" && (
+          <>
+            {onRun && (
+              <IconActionButton label={t("queue_run_job")} onClick={onRun}>
+                <IconPlayerPlay size={ICON_SIZE.md} stroke={ICON_STROKE} />
+              </IconActionButton>
+            )}
+            <IconActionButton label={t("cancel")} tone="danger" onClick={onCancel}>
+              <IconX size={ICON_SIZE.md} stroke={ICON_STROKE} />
+            </IconActionButton>
+          </>
+        )}
+      </Group>
     </Group>
   );
 }

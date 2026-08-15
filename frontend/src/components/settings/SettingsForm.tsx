@@ -248,15 +248,14 @@ export function SettingsForm({
       onChange={setTab}
       variant="pills"
     >
-      {/* The modal body is the scroll container, so the tab list sticks to the
-          top of it and only the panel scrolls away. `alignSelf` is what makes
-          that possible: a stretched flex child is as tall as the panel and has
-          nowhere to stick to. Narrow screens keep the list above the content,
-          where sticking it would cover the fields it scrolls over. */}
+      {/* `position: sticky` was tried here first and depended on which
+          ancestor Mantine happens to make the scroll container. The panel
+          owning its own scrollbox is deterministic: the list can't move
+          because nothing around it scrolls. */}
       <Tabs.List
         mr={narrow ? 0 : "md"}
         mb={narrow ? "md" : 0}
-        style={narrow ? undefined : { position: "sticky", top: 0, alignSelf: "flex-start" }}
+        style={narrow ? undefined : { alignSelf: "flex-start" }}
       >
         <Tabs.Tab
           value="frame"
@@ -296,7 +295,18 @@ export function SettingsForm({
         </Tabs.Tab>
       </Tabs.List>
 
-      <Stack gap="md" style={{ flex: 1, minWidth: 0 }}>
+      <Stack
+        gap="md"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          // Only on the sidebar layout: the phone gets one full-screen scroll,
+          // where a nested scrollbox would trap the page.
+          ...(narrow
+            ? {}
+            : { maxHeight: "min(70vh, 700px)", overflowY: "auto", paddingRight: 4 }),
+        }}
+      >
         <Tabs.Panel value="frame">
           <Stack gap="md">
             <Text c="dimmed" size="sm">

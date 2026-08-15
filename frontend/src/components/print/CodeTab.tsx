@@ -193,6 +193,7 @@ export function CodeTab() {
         saveAsSnippet={saveAsSnippet}
         onSaveAsSnippetChange={setSaveAsSnippet}
         queueDisabled={!options.complete}
+        scheduleOnly={options.chosen}
       />
     </Stack>
   );

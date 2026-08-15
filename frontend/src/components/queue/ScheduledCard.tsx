@@ -1,5 +1,6 @@
 import { Badge, Divider, Group, Stack, Text } from "@mantine/core";
 import { IconCalendarClock } from "@tabler/icons-react";
+import { useState } from "react";
 
 import { useBootstrap, useStrings } from "../../AppContext";
 import { useAppData } from "../../AppData";
@@ -17,6 +18,7 @@ import { ICON_SIZE, ICON_STROKE, ROLE } from "../../theme";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionCard } from "../ui/SectionCard";
 import { ClearFinishedButton } from "./ClearFinishedButton";
+import { JobPreviewModal } from "./JobPreviewModal";
 import { JobRow, describeRule } from "./jobDisplay";
 
 /** Sort key: soonest first. Jobs with no parseable run_at sink to the bottom. */
@@ -65,6 +67,7 @@ export function ScheduledCard() {
   const { queue, refreshAll } = useAppData();
   const { submit } = useSubmit();
   const now = useNow();
+  const [viewing, setViewing] = useState<QueueJob | null>(null);
 
   const scheduled = queue
     .filter((job) => job.scheduled)
@@ -76,7 +79,7 @@ export function ScheduledCard() {
       icon={<IconCalendarClock size={ICON_SIZE.lg} stroke={ICON_STROKE} />}
       action={
         <Group gap="xs" wrap="nowrap">
-          <ClearFinishedButton />
+          <ClearFinishedButton scope="scheduled" />
           <Text size="xs" c="dimmed">
             {t("queue_current_time")}
           </Text>
@@ -99,6 +102,7 @@ export function ScheduledCard() {
                 {index > 0 && <Divider mb="xs" />}
                 <JobRow
                   job={job}
+                  onView={() => setViewing(job)}
                   // Prints it now *as well*; the schedule is untouched.
                   onRun={async () => {
                     await submit(
@@ -134,6 +138,8 @@ export function ScheduledCard() {
           </Stack>
         </>
       )}
+
+      <JobPreviewModal job={viewing} onClose={() => setViewing(null)} />
     </SectionCard>
   );
 }

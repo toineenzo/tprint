@@ -141,6 +141,7 @@ export function IcsTab() {
         saveAsSnippet={saveAsSnippet}
         onSaveAsSnippetChange={setSaveAsSnippet}
         queueDisabled={!options.complete}
+        scheduleOnly={options.chosen}
       />
     </Stack>
   );

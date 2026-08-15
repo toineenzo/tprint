@@ -10,18 +10,26 @@ import { SecondaryButton } from "../ui/Buttons";
 /**
  * "Clear finished", for either queue panel.
  *
- * One component rather than two copies because the endpoint is one call that
- * drops *every* finished job, wherever it happened to be listed — so both
- * buttons must also agree on when they're enabled. Pending and scheduled work
- * is never touched; see print_queue.clear_finished.
+ * One component rather than two copies, but scoped per panel: each button
+ * clears only its own list, because one button emptying both reads as a bug
+ * from whichever list you weren't looking at. The manual/scheduled split
+ * itself stays server-side — see print_queue.CLEAR_SCOPES.
  */
-export function ClearFinishedButton() {
+export function ClearFinishedButton({
+  scope,
+}: {
+  /** Which panel's finished jobs to clear — the server owns the split. */
+  scope: "manual" | "scheduled";
+}) {
   const t = useStrings();
   const { queue, refreshAll } = useAppData();
   const { submit } = useSubmit();
 
   const finished = queue.filter(
-    (job) => job.status !== "pending" && job.status !== "running",
+    (job) =>
+      job.status !== "pending" &&
+      job.status !== "running" &&
+      job.scheduled === (scope === "scheduled"),
   );
 
   return (
@@ -30,7 +38,10 @@ export function ClearFinishedButton() {
       disabled={finished.length === 0}
       icon={<IconTrash size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
       onClick={async () => {
-        await submit(() => api.del("/queue/finished"), "status_queue_cleared");
+        await submit(
+          () => api.del(`/queue/finished?scope=${scope}`),
+          "status_queue_cleared",
+        );
         await refreshAll();
       }}
     >

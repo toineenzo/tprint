@@ -10,7 +10,11 @@ import { ICON_SIZE, ICON_STROKE } from "../../theme";
 import { SecondaryButton } from "../ui/Buttons";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionCard } from "../ui/SectionCard";
+import { useState } from "react";
+
+import type { QueueJob } from "../../api/types";
 import { ClearFinishedButton } from "./ClearFinishedButton";
+import { JobPreviewModal } from "./JobPreviewModal";
 import { JobRow } from "./jobDisplay";
 
 /**
@@ -25,6 +29,7 @@ export function QueueCard() {
   const t = useStrings();
   const { queue, refreshAll } = useAppData();
   const { submit, busy } = useSubmit();
+  const [viewing, setViewing] = useState<QueueJob | null>(null);
 
   const manual = queue.filter((job) => !job.scheduled);
   // Finished jobs stay listed as a record of what ran, but they are not what
@@ -39,7 +44,7 @@ export function QueueCard() {
       icon={<IconStack2 size={ICON_SIZE.lg} stroke={ICON_STROKE} />}
       action={
         <Group gap="xs" wrap="nowrap">
-          <ClearFinishedButton />
+          <ClearFinishedButton scope="manual" />
           <SecondaryButton
             size="xs"
             loading={busy}
@@ -68,6 +73,7 @@ export function QueueCard() {
                 {index > 0 && <Divider mb="xs" />}
                 <JobRow
                   job={job}
+                  onView={() => setViewing(job)}
                   onRun={async () => {
                     await submit(
                       () => api.post(`/queue/${job.id}/run`),
@@ -88,6 +94,8 @@ export function QueueCard() {
           </Stack>
         </>
       )}
+
+      <JobPreviewModal job={viewing} onClose={() => setViewing(null)} />
     </SectionCard>
   );
 }

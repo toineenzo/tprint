@@ -138,18 +138,32 @@ def prune_finished_jobs() -> None:
         conn.execute(f"DELETE FROM print_jobs WHERE {where}", params)
 
 
-def clear_finished() -> int:
-    """Drop every job that has already run, leaving pending/scheduled work alone.
+# The manual/scheduled split as SQL, so the two panels' "clear finished"
+# buttons can't disagree with `is_scheduled` about which jobs they own.
+CLEAR_SCOPES = {
+    "all": "1 = 1",
+    "manual": "run_at IS NULL AND recurrence IS NULL",
+    "scheduled": "(run_at IS NOT NULL OR recurrence IS NOT NULL)",
+}
 
-    The same reasoning as prune_finished_jobs: a pending job is upcoming work,
-    so neither the button nor the auto-clear setting can ever remove one.
+
+def clear_finished(scope: str = "all") -> int:
+    """Drop jobs that have already run, leaving pending/scheduled work alone.
+
+    `scope` picks a panel: the queue and the schedule each clear only their
+    own finished rows, because one button emptying both lists reads as a bug
+    from whichever list you weren't looking at.
+
+    The same reasoning as prune_finished_jobs otherwise: a pending job is
+    upcoming work, so neither the buttons nor the auto-clear setting can ever
+    remove one.
     """
-    finished = "status IN ('done', 'failed', 'canceled')"
+    where = f"status IN ('done', 'failed', 'canceled') AND {CLEAR_SCOPES[scope]}"
     with db.get_conn() as conn:
-        rows = conn.execute(f"SELECT payload FROM print_jobs WHERE {finished}").fetchall()
+        rows = conn.execute(f"SELECT payload FROM print_jobs WHERE {where}").fetchall()
         for row in rows:
             _cleanup_payload_files(json.loads(row["payload"]))
-        conn.execute(f"DELETE FROM print_jobs WHERE {finished}")
+        conn.execute(f"DELETE FROM print_jobs WHERE {where}")
     return len(rows)
 
 
@@ -460,6 +474,86 @@ def _run_job(job_id: int) -> None:
     # doesn't wait for one — and auto-clear reads as broken if a finished job
     # lingers for up to POLL_SECONDS after it printed.
     prune_finished_jobs()
+
+
+def job_content(kind: str, payload: dict):
+    """What a queued job would print, as a content function for `preview`.
+
+    Mirrors `_execute` kind for kind, but returns the receipt instead of
+    printing it — the same `printer.*_content` factories the real print uses,
+    so a previewed job and a printed one can't drift. Multi-receipt jobs
+    (checklist/agenda in `separate` or `day` mode) preview their first receipt,
+    which is what /print/preview does for the same reason.
+
+    `random` is the one that can't be previewed honestly: the item is drawn at
+    print time, so this draws a *different* one. It's still worth showing —
+    the frame and layout are what the preview is for.
+    """
+    from app import content as content_store
+    from app import export
+
+    if kind == "text":
+        return printer.text_content(payload["text"])
+    if kind == "random":
+        return printer.text_content(
+            content_store.random_surprise(payload.get("kind"), payload.get("lang", "en"))
+        )
+    if kind == "checklist":
+        # Both job iterators yield (label, content_fn); the preview wants the
+        # first receipt's content, exactly as /print/preview does.
+        return next(
+            printer.checklist_jobs(
+                payload.get("title"),
+                payload["items"],
+                payload["mode"],
+                payload.get("lang", "en"),
+            )
+        )[1]
+    if kind == "composition":
+        images = {
+            index: printer.image_from_upload(_read_upload(name))
+            for index, name in enumerate(payload.get("files") or [])
+        }
+        return printer.composition_content(payload["parts"], images)
+    if kind == "code":
+        return printer.code_content(payload["data"], payload["format"], payload["symbology"])
+    if kind == "richtext":
+        return printer.richtext_content(payload["blocks"])
+    if kind == "image":
+        return printer.images_content([printer.image_from_upload(_read_upload(payload["file"]))])
+    if kind == "pdf":
+        pages = printer._render_pdf_pages(_read_upload(payload["file"]), payload.get("crop"))
+        return printer.images_content(pages)
+    if kind == "ics":
+        events = ics_import.parse_ics(_read_upload(payload["file"]))
+        return next(
+            printer.ics_jobs(
+                events,
+                payload["mode"],
+                payload.get("overview", "none"),
+                payload.get("orientation", "vertical"),
+            )
+        )[1]
+    if kind == "snippet":
+        from app import snippets as snippets_store
+
+        snippet = snippets_store.get_snippet(payload["snippet_id"])
+        if not snippet:
+            raise ValueError("snippet not found")
+        return next(export.snippet_jobs(snippet, payload.get("lang", "en")))[1]
+
+    raise ValueError(f"unknown job kind: {kind}")
+
+
+def job_preview_content(job_id: int):
+    """The content function for a stored job, or None if there is no such job."""
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT kind, payload FROM print_jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+    if not row:
+        return None
+    return job_content(row["kind"], json.loads(row["payload"]))
 
 
 def _execute(kind: str, payload: dict) -> None:

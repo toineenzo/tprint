@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 
-from app import auth, print_queue, printer
+from app import auth, preview, print_queue, printer
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -27,9 +28,35 @@ def run_single_job(job_id: int, _: None = Depends(auth.require_api_auth)):
     return {"status": "printed"}
 
 
+@router.get("/{job_id}/preview")
+def preview_job(job_id: int, _: None = Depends(auth.require_api_auth)):
+    """What this queued job would print, as a PNG.
+
+    Rendered through the same content factories the job itself uses, so the
+    preview and the eventual receipt can't disagree — see
+    print_queue.job_content.
+    """
+    try:
+        content_fn = print_queue.job_preview_content(job_id)
+    except Exception as exc:  # a job whose upload or snippet is gone
+        raise HTTPException(400, f"could not render this job: {exc}") from exc
+    if content_fn is None:
+        raise HTTPException(404, "job not found")
+    return Response(preview.to_png(preview.render_job(content_fn)), media_type="image/png")
+
+
 @router.delete("/finished")
-def clear_finished_jobs(_: None = Depends(auth.require_api_auth)):
-    return {"cleared": print_queue.clear_finished()}
+def clear_finished_jobs(
+    scope: str = "all", _: None = Depends(auth.require_api_auth)
+):
+    """Clear finished jobs — all of them, or just one panel's.
+
+    `scope` is `all`, `manual` or `scheduled`. The split itself stays in
+    print_queue with `is_scheduled`, so the UI never re-derives it.
+    """
+    if scope not in print_queue.CLEAR_SCOPES:
+        raise HTTPException(400, f"scope must be one of {', '.join(print_queue.CLEAR_SCOPES)}")
+    return {"cleared": print_queue.clear_finished(scope)}
 
 
 @router.delete("/{job_id}")

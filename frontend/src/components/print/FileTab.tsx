@@ -519,6 +519,7 @@ export function FileTab({ config }: { config: FileTabConfig }) {
         saveAsSnippet={saveAsSnippet}
         onSaveAsSnippetChange={setSaveAsSnippet}
         queueDisabled={!options.complete}
+        scheduleOnly={options.chosen}
       />
     </Stack>
   );

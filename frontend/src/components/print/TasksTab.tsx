@@ -224,6 +224,7 @@ export function TasksTab() {
         saveAsSnippet={saveAsSnippet}
         onSaveAsSnippetChange={setSaveAsSnippet}
         queueDisabled={!options.complete}
+        scheduleOnly={options.chosen}
       />
     </Stack>
   );

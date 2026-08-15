@@ -111,6 +111,7 @@ export function TextTab() {
         saveAsSnippet={saveAsSnippet}
         onSaveAsSnippetChange={setSaveAsSnippet}
         queueDisabled={!options.complete}
+        scheduleOnly={options.chosen}
       />
     </Stack>
   );

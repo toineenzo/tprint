@@ -23,6 +23,7 @@ export function PrintActions({
   busy,
   disabled,
   queueDisabled,
+  scheduleOnly,
 }: {
   printLabelKey: StringKey;
   onPrint: () => void;
@@ -33,30 +34,47 @@ export function PrintActions({
   disabled?: boolean;
   /** Set when the schedule is half-filled — Print stays available, Queue can't. */
   queueDisabled?: boolean;
+  /** Set once a schedule has been picked: Queue is then the only action. */
+  scheduleOnly?: boolean;
 }) {
   const t = useStrings();
 
   return (
     <Group gap="md" wrap="wrap">
       <Group gap="xs" wrap="wrap">
-        <PrimaryButton
-          type="button"
-          onClick={onPrint}
-          loading={busy}
-          disabled={disabled}
-          icon={<IconPrinter size={ICON_SIZE.md} stroke={ICON_STROKE} />}
-        >
-          {t(printLabelKey)}
-        </PrimaryButton>
+        {!scheduleOnly && (
+          <PrimaryButton
+            type="button"
+            onClick={onPrint}
+            loading={busy}
+            disabled={disabled}
+            icon={<IconPrinter size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+          >
+            {t(printLabelKey)}
+          </PrimaryButton>
+        )}
 
-        <SecondaryButton
-          type="button"
-          onClick={onQueue}
-          disabled={busy || disabled || queueDisabled}
-          icon={<IconPlaylistAdd size={ICON_SIZE.md} stroke={ICON_STROKE} />}
-        >
-          {t("queue_btn")}
-        </SecondaryButton>
+        {/* Promoted to primary when it's the only thing left to press. */}
+        {scheduleOnly ? (
+          <PrimaryButton
+            type="button"
+            onClick={onQueue}
+            loading={busy}
+            disabled={disabled || queueDisabled}
+            icon={<IconPlaylistAdd size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+          >
+            {t("queue_btn")}
+          </PrimaryButton>
+        ) : (
+          <SecondaryButton
+            type="button"
+            onClick={onQueue}
+            disabled={busy || disabled || queueDisabled}
+            icon={<IconPlaylistAdd size={ICON_SIZE.md} stroke={ICON_STROKE} />}
+          >
+            {t("queue_btn")}
+          </SecondaryButton>
+        )}
       </Group>
 
       <Switch
