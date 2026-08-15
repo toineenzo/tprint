@@ -476,6 +476,23 @@ def _run_job(job_id: int) -> None:
     prune_finished_jobs()
 
 
+def _ics_events(payload: dict) -> list[dict]:
+    """The events an ics job prints, read fresh every time it runs.
+
+    A URL job re-downloads on each run — that is what makes "every Monday, the
+    week ahead" print *that* week — while an uploaded file is read from disk.
+    The relative window and the index selection are applied in that order,
+    exactly as the print endpoint applies them.
+    """
+    raw = (
+        ics_import.fetch_ics(payload["url"])
+        if payload.get("url")
+        else _read_upload(payload["file"])
+    )
+    events = ics_import.within_days(ics_import.parse_ics(raw), payload.get("days_ahead"))
+    return ics_import.select_events(events, payload.get("select"))
+
+
 def job_content(kind: str, payload: dict):
     """What a queued job would print, as a content function for `preview`.
 
@@ -525,7 +542,7 @@ def job_content(kind: str, payload: dict):
         pages = printer._render_pdf_pages(_read_upload(payload["file"]), payload.get("crop"))
         return printer.images_content(pages)
     if kind == "ics":
-        events = ics_import.parse_ics(_read_upload(payload["file"]))
+        events = _ics_events(payload)
         return next(
             printer.ics_jobs(
                 events,
@@ -579,7 +596,7 @@ def _execute(kind: str, payload: dict) -> None:
     elif kind == "pdf":
         actions.print_pdf(_read_upload(payload["file"]), payload.get("crop"))
     elif kind == "ics":
-        events = ics_import.parse_ics(_read_upload(payload["file"]))
+        events = _ics_events(payload)
         actions.print_ics(
             events,
             payload["mode"],

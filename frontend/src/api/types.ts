@@ -186,6 +186,12 @@ export type PreviewRequest = {
   file?: File | null;
   /** JSON crop box (fractions), for a PDF cropped before upload. */
   crop?: string | null;
+  /** Comma-separated event indices, when only part of a calendar is printed. */
+  select?: string;
+  /** A calendar fetched by URL rather than uploaded. */
+  url?: string;
+  /** Relative window in days from today; omitted means the whole calendar. */
+  days_ahead?: number;
 };
 
 export type Recurrence = "daily" | "weekly" | "monthly";

@@ -33,6 +33,8 @@ type FileTabConfig = {
   accept: string;
   kind: Extract<SnippetKind, "image" | "pdf">;
   printLabelKey: StringKey;
+  /** Whether this tab is the canvas composer or a plain file printer. */
+  composer?: boolean;
 };
 
 /**
@@ -51,12 +53,22 @@ type FileTabConfig = {
  * **PDF** stays a plain whole-document printer: the composer works a page at a
  * time, which is the wrong tool for a ten-page report.
  */
-export const FILE_TABS: Record<"image" | "pdf", FileTabConfig> = {
+export const FILE_TABS: Record<"photo" | "image" | "pdf", FileTabConfig> = {
+  // "Print this photo", with nothing in the way: pick a file, crop it if you
+  // want, print. The composer is the wrong tool for that, and was the only
+  // way to print an image at all until this tab existed.
+  photo: {
+    url: "/print/image",
+    accept: "image/*",
+    kind: "image",
+    printLabelKey: "print_image_btn",
+  },
   image: {
     url: "/print/image",
     accept: "image/*",
     kind: "image",
     printLabelKey: "print_compose_btn",
+    composer: true,
   },
   pdf: {
     url: "/print/pdf",
@@ -75,7 +87,7 @@ export function FileTab({ config }: { config: FileTabConfig }) {
   const { runPrint, busy } = usePrintGate();
   const saveSnippet = useSaveAsSnippet();
 
-  const editing = config.kind === "image";
+  const editing = config.composer === true;
   const pageWidth = settings?.paper_width_px ?? 576;
 
   const [state, setState] = useState<EditorState>(EMPTY_STATE);
@@ -231,6 +243,18 @@ export function FileTab({ config }: { config: FileTabConfig }) {
     [images, resolve, state.items, t],
   );
 
+  // Object URL for the plain image tab's preview, revoked when it changes.
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (editing || !file || config.kind !== "image") {
+      setPhotoUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPhotoUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [editing, file, config.kind]);
+
   /**
    * Show the chosen PDF as it will print, a page at a time.
    *
@@ -239,7 +263,7 @@ export function FileTab({ config }: { config: FileTabConfig }) {
    * can't open says so here rather than at print time.
    */
   useEffect(() => {
-    if (editing || !file) {
+    if (editing || !file || config.kind !== "pdf") {
       setPdfPreview(null);
       setPdfCrop(null);
       return;
@@ -263,7 +287,7 @@ export function FileTab({ config }: { config: FileTabConfig }) {
       stale = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [editing, file, pdfPage, rasterizePdf, t]);
+  }, [editing, file, config.kind, pdfPage, rasterizePdf, t]);
 
   const reset = () => {
     state.items.forEach((item) => dropCache(item.id));
@@ -409,6 +433,30 @@ export function FileTab({ config }: { config: FileTabConfig }) {
             leftSection={<Icon size={ICON_SIZE.md} stroke={ICON_STROKE} />}
           />
 
+          {file && config.kind === "image" && (
+            <Stack gap="xs">
+              <Group gap="xs">
+                <SecondaryButton
+                  size="xs"
+                  onClick={() => setPendingImage(file)}
+                  icon={<IconCrop size={ICON_SIZE.sm} stroke={ICON_STROKE} />}
+                >
+                  {t("crop_title")}
+                </SecondaryButton>
+              </Group>
+              <img
+                src={photoUrl ?? ""}
+                alt={t("preview")}
+                style={{
+                  maxWidth: 320,
+                  display: "block",
+                  background: "#fff",
+                  border: "1px solid var(--mantine-color-default-border)",
+                }}
+              />
+            </Stack>
+          )}
+
           {pdfPreview && (
             <Stack gap="xs">
               <Group gap="xs" wrap="wrap">
@@ -503,6 +551,12 @@ export function FileTab({ config }: { config: FileTabConfig }) {
             const [head, ...rest] = pendingRest;
             setPendingImage(head ?? null);
             setPendingRest(rest);
+            // On the plain image tab there is no canvas to add to: the crop
+            // simply becomes the file that gets printed.
+            if (!editing) {
+              setFile(next);
+              return;
+            }
             void addFiles([next]);
           }}
         />

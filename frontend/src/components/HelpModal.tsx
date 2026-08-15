@@ -31,34 +31,54 @@ type HelpPage = {
  * handled falls through as plain text rather than as broken markup, and
  * nothing here interprets raw HTML, so a wiki edit can't inject any.
  */
-function renderMarkdown(markdown: string) {
+function renderMarkdown(markdown: string, onNavigate: (page: string) => void) {
   const blocks: React.ReactNode[] = [];
   const lines = markdown.split("\n");
   let index = 0;
   let key = 0;
 
   const inline = (text: string): React.ReactNode => {
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
     // Links, then inline code, then bold — in that order so a link's label can
     // itself be styled. Everything else is left alone.
     const parts: React.ReactNode[] = [];
-    const pattern = /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*/g;
+    // Bold before italic, or `**x**` would match the single-asterisk rule
+    // twice and render a stray asterisk.
+    const pattern =
+      /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
     let last = 0;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
       if (match.index > last) parts.push(text.slice(last, match.index));
       if (match[1]) {
-        const href = match[2].startsWith("http")
-          ? match[2]
-          : `https://github.com/toineenzo/tprint/wiki/${match[2]}`;
+        // A wiki-internal target is another page of this same modal, so it
+        // switches pages here instead of sending the reader to github.com for
+        // something they already have open.
+        const target = match[2];
         parts.push(
-          <Anchor key={parts.length} href={href} target="_blank" rel="noreferrer">
-            {match[1]}
-          </Anchor>,
+          target.startsWith("http") ? (
+            <Anchor key={parts.length} href={target} target="_blank" rel="noreferrer">
+              {match[1]}
+            </Anchor>
+          ) : (
+            <Anchor
+              key={parts.length}
+              component="button"
+              type="button"
+              onClick={() => onNavigate(target)}
+            >
+              {match[1]}
+            </Anchor>
+          ),
         );
       } else if (match[3]) {
         parts.push(<Code key={parts.length}>{match[3]}</Code>);
       } else if (match[4]) {
-        parts.push(<strong key={parts.length}>{match[4]}</strong>);
+        // Recursed, because the wiki writes **[Page](Page)** — matching bold
+        // first and stopping there rendered the raw link syntax in bold.
+        parts.push(<strong key={parts.length}>{inline(match[4])}</strong>);
+      } else if (match[5]) {
+        parts.push(<em key={parts.length}>{inline(match[5])}</em>);
       }
       last = pattern.lastIndex;
     }
@@ -222,7 +242,12 @@ export function HelpModal({ opened, onClose }: { opened: boolean; onClose: () =>
 
         {doc && (
           <Stack gap="xs">
-            {renderMarkdown(doc.markdown)}
+            {renderMarkdown(doc.markdown, (target) => {
+              // Unknown target: fall back to the wiki rather than blanking the
+              // modal on a page this build doesn't ship.
+              if (doc.pages.includes(target)) setPage(target);
+              else window.open(`${doc.url}/${target}`, "_blank", "noreferrer");
+            })}
             <Text size="xs" c="dimmed">
               {doc.source === "wiki" ? t("help_source_wiki") : t("help_source_bundled")}{" "}
               <Anchor href={doc.url} target="_blank" rel="noreferrer">

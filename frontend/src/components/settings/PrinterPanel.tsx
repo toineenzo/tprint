@@ -1,4 +1,15 @@
-import { Alert, Group, List, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Divider,
+  Group,
+  List,
+  PasswordInput,
+  SegmentedControl,
+  Stack,
+  Switch,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { IconCheck, IconPlugConnected, IconPrinter, IconX } from "@tabler/icons-react";
 import { useState } from "react";
 
@@ -32,6 +43,8 @@ export function PrinterPanel({
   const [backend, setBackend] = useState(settings.printer_backend);
   const [device, setDevice] = useState(settings.printer_device);
   const [test, setTest] = useState<TestResult | null>(null);
+  const [authOn, setAuthOn] = useState(settings.auth_enabled);
+  const [password, setPassword] = useState("");
 
   const save = async () => {
     const form = new FormData();
@@ -55,6 +68,20 @@ export function PrinterPanel({
       setTest(await api.postForm<TestResult>("/api/settings/printer-test", form));
     } catch {
       setTest(null);
+    }
+  };
+
+  const saveAuth = async () => {
+    const form = new FormData();
+    form.set("enabled", String(authOn));
+    if (password) form.set("password", password);
+    const saved = await submit(
+      () => api.postForm<PrinterSettings>("/api/settings/auth", form),
+      "settings_saved",
+    );
+    if (saved) {
+      onSaved(saved);
+      setPassword("");
     }
   };
 
@@ -102,6 +129,38 @@ export function PrinterPanel({
           {t("settings_test_print")}
         </SecondaryButton>
       </Group>
+
+      <Divider my="xs" />
+
+      {/* The same controls the setup wizard offers, because the wizard runs
+          once and a password outlives it. */}
+      <Text size="sm" fw={600}>
+        {t("setup_step_password")}
+      </Text>
+      <Switch
+        label={t("setup_auth_enabled")}
+        description={t("setup_auth_hint")}
+        checked={authOn}
+        onChange={(event) => setAuthOn(event.currentTarget.checked)}
+      />
+      {authOn && (
+        <PasswordInput
+          label={t("setup_password")}
+          description={
+            settings.has_password ? t("setup_password_keep") : t("setup_password_hint")
+          }
+          value={password}
+          onChange={(event) => setPassword(event.currentTarget.value)}
+        />
+      )}
+      <Group>
+        <PrimaryButton onClick={() => void saveAuth()} loading={busy}>
+          {t("settings_save_access")}
+        </PrimaryButton>
+      </Group>
+      <Text size="xs" c="dimmed">
+        {t("settings_access_note")}
+      </Text>
 
       {test && (
         <Alert color={test.ok ? ROLE.success : ROLE.danger}>

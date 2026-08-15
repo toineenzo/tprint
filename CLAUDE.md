@@ -202,6 +202,22 @@ that causes vestibular trouble. The ghost is cleaned up by both the animation's
 `finished` promise and a timeout — it is decoration appended to `<body>`, and
 must never outlive its animation or be able to break a print.
 
+**A calendar can be a URL, and then it is re-read on every run.** `/print/ics`
+takes either an upload or a link; a queued URL job stores the *URL*, so "every
+Monday, the week ahead" prints the calendar as it stands that Monday rather
+than a copy frozen when the job was made. Two consequences follow:
+
+- The window is **relative** (`days_ahead`, counted from the day it prints),
+  because an absolute range would be frozen the same way.
+- Index selection (`select`) is dropped for URL jobs. Indices are positions in
+  one parse of one file; against a calendar that has changed since, they would
+  select the wrong events silently. An uploaded file keeps its selection, since
+  the stored bytes can't change.
+
+`webcal://` is rewritten to `https://`; every other scheme is refused, because
+that URL arrives from a form field and `file://` would read the container's
+own disk.
+
 **Agenda composition reads dates back out of `when`, on purpose.**
 `ics_import.parse_ics` formats a date into the `when` string and then deletes
 its sort key, so its output carries no machine-readable date. Rather than widen

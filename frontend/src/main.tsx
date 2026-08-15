@@ -34,7 +34,9 @@ createRoot(container).render(
       {/* Calendars follow the UI language and start the week on Monday, the
           convention in every locale this app ships. */}
       <DatesProvider settings={{ locale: boot.lang, firstDayOfWeek: 1 }}>
-        <Notifications position="top-right" limit={3} />
+        {/* Bottom right: the top right is where the header actions live, and a
+            toast landing on them hid the button that had just been pressed. */}
+        <Notifications position="bottom-right" limit={3} />
         <AppProvider boot={boot}>
           <Page />
         </AppProvider>

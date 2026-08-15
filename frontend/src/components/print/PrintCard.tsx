@@ -3,6 +3,7 @@ import {
   IconCalendarEvent,
   IconFileText,
   IconFileTypePdf,
+  IconLayoutBoardSplit,
   IconListCheck,
   IconPhoto,
   IconQrcode,
@@ -22,7 +23,8 @@ import { TextTab } from "./TextTab";
 
 const TABS = [
   { value: "text", labelKey: "tab_text", icon: IconFileText },
-  { value: "image", labelKey: "tab_compose", icon: IconPhoto },
+  { value: "photo", labelKey: "tab_image", icon: IconPhoto },
+  { value: "image", labelKey: "tab_compose", icon: IconLayoutBoardSplit },
   { value: "pdf", labelKey: "tab_pdf", icon: IconFileTypePdf },
   { value: "tasks", labelKey: "tab_tasks", icon: IconListCheck },
   { value: "ics", labelKey: "tab_ics", icon: IconCalendarEvent },
@@ -68,6 +70,9 @@ export function PrintCard() {
 
         <Tabs.Panel value="text">
           <TextTab />
+        </Tabs.Panel>
+        <Tabs.Panel value="photo">
+          <FileTab config={FILE_TABS.photo} />
         </Tabs.Panel>
         <Tabs.Panel value="image">
           <FileTab config={FILE_TABS.image} />

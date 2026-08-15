@@ -42,6 +42,21 @@ def _parse_crop(raw: str | None) -> dict | None:
     return box if isinstance(box, dict) else None
 
 
+def _parse_select(raw: str | None) -> list[int] | None:
+    """A comma-separated list of event indices, or None for "all of them".
+
+    None and "everything" are deliberately the same thing here: a caller that
+    doesn't know about selection — the documented API before it existed — must
+    keep printing the whole calendar.
+    """
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return sorted({int(part) for part in raw.split(",") if part.strip()})
+    except ValueError as exc:
+        raise HTTPException(400, "select must be comma-separated whole numbers") from exc
+
+
 def _resolve_lang(request: Request, override: Optional[str]) -> str:
     if override:
         return i18n.resolve_lang(override)
@@ -201,16 +216,78 @@ def print_checklist(
     return {"status": "printed"}
 
 
+def _ics_bytes(file: UploadFile | None, url: str | None, data: bytes | None = None) -> bytes:
+    """The calendar to work from: an upload or a URL, exactly one of them."""
+    if data:
+        return data
+    if url and url.strip():
+        try:
+            return ics_import.fetch_ics(url.strip())
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(400, f"could not fetch that calendar: {exc}") from exc
+    raise HTTPException(400, "an .ics file or a calendar URL is required")
+
+
+@router.post("/ics-events")
+async def list_ics_events(
+    file: Optional[UploadFile] = File(None),
+    url: Optional[str] = Form(None),
+    days_ahead: Optional[int] = Form(None),
+    _: None = Depends(auth.require_api_auth),
+):
+    """The events in an uploaded .ics, so the UI can offer a choice.
+
+    Each carries its index in the parsed list — that index *is* the selection
+    token used by /print/ics: the parser sorts deterministically, so the same
+    file yields the same indices when a queued job re-parses it later. Nothing
+    is stored by this call; it only reads the upload.
+    """
+    data = await file.read() if file is not None and file.filename else None
+    try:
+        events = ics_import.parse_ics(_ics_bytes(file, url, data))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(400, f"could not parse .ics file: {exc}") from exc
+
+    events = ics_import.within_days(events, days_ahead)
+    return {
+        "events": [
+            {
+                "index": index,
+                "summary": event["summary"],
+                "when": event.get("when"),
+                "location": event.get("location"),
+                # ISO day, for the date-range filter; None when the event has
+                # no usable start (agenda.event_date reads it back from `when`).
+                "date": (day.isoformat() if (day := agenda.event_date(event)) else None),
+            }
+            for index, event in enumerate(events)
+        ]
+    }
+
+
 @router.post("/ics")
 async def print_ics(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    url: Optional[str] = Form(None),
     mode: IcsMode = Form("single"),
     overview: AgendaOverview = Form("none"),
     orientation: AgendaOrientation = Form("vertical"),
+    select: Optional[str] = Form(None),
+    days_ahead: Optional[int] = Form(None),
     options: QueueOptions = Depends(queue_options_form),
     _: None = Depends(auth.require_api_auth),
 ):
-    data = await file.read()
+    """Print a calendar, from an upload or from a subscription URL.
+
+    A URL is stored as a URL, not as a downloaded copy: a job that fetches it
+    again on every run is the entire point of "every Monday, the week ahead".
+    """
+    uploaded = await file.read() if file is not None and file.filename else None
+    data = _ics_bytes(file, url, uploaded)
     # Parsed before anything is stored, so a malformed file is rejected up
     # front instead of failing later inside the background worker (and so a
     # rejected upload leaves nothing behind in QUEUE_UPLOAD_DIR).
@@ -221,16 +298,35 @@ async def print_ics(
     if not events:
         raise HTTPException(400, "no events found in .ics file")
 
+    windowed = ics_import.within_days(events, days_ahead)
+    chosen = ics_import.select_events(windowed, _parse_select(select))
+    if not chosen:
+        raise HTTPException(400, "no events selected")
+
     if _is_queued(options):
-        saved = print_queue.save_upload(data, file.filename or "calendar.ics")
-        return _queued_response(
-            options,
-            "ics",
-            {"file": saved, "mode": mode, "overview": overview, "orientation": orientation},
-            label=f"{len(events)} events",
-        )
-    actions.print_ics(events, mode, overview, orientation)
-    return {"status": "printed", "count": len(events)}
+        payload = {
+            "mode": mode,
+            "overview": overview,
+            "orientation": orientation,
+            # A relative window, re-evaluated on every run — see
+            # ics_import.within_days.
+            "days_ahead": days_ahead,
+            # Indices, not the events themselves: the job re-reads the calendar
+            # at print time, so it must select the same way.
+            "select": _parse_select(select),
+        }
+        if uploaded is not None:
+            payload["file"] = print_queue.save_upload(
+                uploaded, file.filename or "calendar.ics"
+            )
+        else:
+            payload["url"] = url.strip()
+            # Indices against a calendar that will have changed by then would
+            # select the wrong events; the window is the only stable filter.
+            payload["select"] = None
+        return _queued_response(options, "ics", payload, label=f"{len(chosen)} events")
+    actions.print_ics(chosen, mode, overview, orientation)
+    return {"status": "printed", "count": len(chosen)}
 
 
 @router.post("/code-image")
@@ -387,12 +483,15 @@ async def preview_job(
             items = items[:1]
         content_fn = printer.checklist_content(parsed.title, items, lang)
     elif kind == "ics":
-        if not data:
-            raise HTTPException(400, "a file is required to preview a calendar")
         try:
-            events = ics_import.parse_ics(data)
+            events = ics_import.parse_ics(_ics_bytes(None, url, data))
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(400, f"could not parse .ics file: {exc}") from exc
+        events = ics_import.select_events(
+            ics_import.within_days(events, days_ahead), _parse_select(select)
+        )
         # Previews the first receipt of whichever mode was chosen, framed the
         # same way the real print frames it.
         if mode == "day":
